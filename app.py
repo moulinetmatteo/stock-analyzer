@@ -14,37 +14,29 @@ import urllib.request
 import urllib.parse
 import bcrypt
 from supabase import create_client
-from streamlit_cookies_controller import CookieController
 
 st.set_page_config(page_title="Stock Analyzer", layout="wide", page_icon="📈")
 
-# ── Cookie auth ───────────────────────────────────────────────────────────────
-_COOKIE_NAME = st.secrets.get("cookie", {}).get("name", "sa_auth")
-_COOKIE_KEY  = st.secrets.get("cookie", {}).get("key", "changeme_32chars!!!!!!!!!!!!!!!!")
-_COOKIE_DAYS = int(st.secrets.get("cookie", {}).get("expiry_days", 30))
-_cookie_ctrl = CookieController(key="__sa_ctrl__")
+# ── Session persistante (query param signé) ───────────────────────────────────
+_SESSION_KEY = st.secrets.get("cookie", {}).get("key", "changeme_32chars!!!!!!!!!!!!!!!!")
 
 def _sign(username: str) -> str:
-    return hmac.new(_COOKIE_KEY.encode(), username.encode(), hashlib.sha256).hexdigest()[:24]
+    return hmac.new(_SESSION_KEY.encode(), username.encode(), hashlib.sha256).hexdigest()[:24]
 
-def _get_cookie_user():
-    val = _cookie_ctrl.get(_COOKIE_NAME)
-    if not val or ":" not in str(val):
+def _get_url_user():
+    token = st.query_params.get("auth", "")
+    if not token or ":" not in token:
         return None
-    username, sig = str(val).rsplit(":", 1)
+    username, sig = token.rsplit(":", 1)
     if hmac.compare_digest(sig, _sign(username)):
         return username
     return None
 
-def _set_cookie(username: str):
-    _cookie_ctrl.set(_COOKIE_NAME, f"{username}:{_sign(username)}",
-                     max_age=_COOKIE_DAYS * 86400)
+def _set_session_param(username: str):
+    st.query_params["auth"] = f"{username}:{_sign(username)}"
 
-def _del_cookie():
-    try:
-        _cookie_ctrl.remove(_COOKIE_NAME)
-    except Exception:
-        pass
+def _clear_session_param():
+    st.query_params.pop("auth", None)
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 TICKER_CURRENCY = {
@@ -126,10 +118,10 @@ def auth_register(username: str, email: str, name: str, password: str, confirm: 
         return False, f"Erreur : {e}"
 
 if not st.session_state.get("authenticated"):
-    # Auto-login via cookie
-    _cookie_user = _get_cookie_user()
-    if _cookie_user:
-        rows = supabase.table("users").select("username,name").eq("username", _cookie_user).execute().data
+    # Auto-login via token URL signé
+    _url_user = _get_url_user()
+    if _url_user:
+        rows = supabase.table("users").select("username,name").eq("username", _url_user).execute().data
         if rows:
             st.session_state["authenticated"] = True
             st.session_state["username"]      = rows[0]["username"]
@@ -146,7 +138,7 @@ if not st.session_state.get("authenticated"):
             if st.form_submit_button("Connexion", type="primary"):
                 ok, uid, uname = auth_login(l_user, l_pass)
                 if ok:
-                    _set_cookie(uid)
+                    _set_session_param(uid)
                     st.session_state["authenticated"] = True
                     st.session_state["username"]      = uid
                     st.session_state["name"]          = uname
@@ -419,7 +411,7 @@ st.sidebar.title("📈 Stock Analyzer")
 st.sidebar.caption(f"Connecté : **{USER_NAME}**")
 st.sidebar.caption(f"1 € = {eurusd:.4f} $")
 if st.sidebar.button("🚪 Déconnexion"):
-    _del_cookie()
+    _clear_session_param()
     st.session_state.clear()
     st.rerun()
 st.sidebar.divider()

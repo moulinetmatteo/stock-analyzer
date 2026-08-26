@@ -14,7 +14,7 @@ import urllib.request
 import urllib.parse
 import bcrypt
 from supabase import create_client
-import extra_streamlit_components as stx
+from streamlit_cookies_controller import CookieController
 
 st.set_page_config(page_title="Stock Analyzer", layout="wide", page_icon="📈")
 
@@ -22,13 +22,13 @@ st.set_page_config(page_title="Stock Analyzer", layout="wide", page_icon="📈")
 _COOKIE_NAME = st.secrets.get("cookie", {}).get("name", "sa_auth")
 _COOKIE_KEY  = st.secrets.get("cookie", {}).get("key", "changeme_32chars!!!!!!!!!!!!!!!!")
 _COOKIE_DAYS = int(st.secrets.get("cookie", {}).get("expiry_days", 30))
-_cookie_mgr  = stx.CookieManager(key="__sa_mgr__")
+_cookie_ctrl = CookieController(key="__sa_ctrl__")
 
 def _sign(username: str) -> str:
     return hmac.new(_COOKIE_KEY.encode(), username.encode(), hashlib.sha256).hexdigest()[:24]
 
 def _get_cookie_user():
-    val = _cookie_mgr.get(_COOKIE_NAME)
+    val = _cookie_ctrl.get(_COOKIE_NAME)
     if not val or ":" not in str(val):
         return None
     username, sig = str(val).rsplit(":", 1)
@@ -37,12 +37,12 @@ def _get_cookie_user():
     return None
 
 def _set_cookie(username: str):
-    _cookie_mgr.set(_COOKIE_NAME, f"{username}:{_sign(username)}",
-                    expires_at=datetime.now() + timedelta(days=_COOKIE_DAYS))
+    _cookie_ctrl.set(_COOKIE_NAME, f"{username}:{_sign(username)}",
+                     max_age=_COOKIE_DAYS * 86400)
 
 def _del_cookie():
     try:
-        _cookie_mgr.delete(_COOKIE_NAME)
+        _cookie_ctrl.remove(_COOKIE_NAME)
     except Exception:
         pass
 

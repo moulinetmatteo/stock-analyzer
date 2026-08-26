@@ -55,6 +55,17 @@ create table if not exists telegram_config (
   chat_id  text
 );
 
+create table if not exists journal (
+  id           uuid default gen_random_uuid() primary key,
+  user_id      text not null,
+  ticker       text not null,
+  note         text default '',
+  target_price float,
+  review_date  text,
+  updated_at   timestamptz default now(),
+  unique (user_id, ticker)
+);
+
 create table if not exists rsi_state (
   user_id       text not null,
   ticker        text not null,

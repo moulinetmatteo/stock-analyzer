@@ -179,6 +179,17 @@ def upsert_custom_ticker(nom: str, ticker: str):
 def delete_custom_ticker(nom: str):
     supabase.table("watchlist_custom").delete().eq("user_id", UID).eq("nom", nom).execute()
 
+def get_journal() -> dict:
+    rows = supabase.table("journal").select("*").eq("user_id", UID).execute().data
+    return {r["ticker"]: r for r in rows}
+
+def save_journal(ticker: str, note: str, target_price, review_date: str):
+    supabase.table("journal").upsert(
+        {"user_id": UID, "ticker": ticker, "note": note,
+         "target_price": target_price, "review_date": review_date},
+        on_conflict="user_id,ticker"
+    ).execute()
+
 def get_tg_config() -> dict:
     rows = supabase.table("telegram_config").select("*").eq("user_id", UID).execute().data
     return rows[0] if rows else {}
@@ -328,7 +339,7 @@ if st.sidebar.button("🚪 Déconnexion"):
 st.sidebar.divider()
 
 page = st.sidebar.radio("Navigation", [
-    "Dashboard", "Screener", "Analyse détaillée",
+    "Dashboard", "Screener", "Analyse détaillée", "Comparaison",
     "Mon Portefeuille", "Backtesting", "Alertes", "Paramètres"
 ])
 period_label = st.sidebar.selectbox("Période", list(PERIOD_OPTIONS.keys()), index=2)
@@ -407,6 +418,49 @@ if page == "Dashboard":
         with col_dn:
             st.markdown("**🔴 Top baisses**")
             st.dataframe(df_mv.tail(5).iloc[::-1], use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("🗺️ Heatmap du marché")
+    SECTORS = {
+        "US Tech":    ["Apple","Microsoft","Google","Amazon","NVIDIA","Tesla","Meta","Netflix","AMD","Intel","Oracle","Salesforce","Adobe"],
+        "US Finance": ["JPMorgan","Bank of America","Goldman Sachs","Visa","Mastercard"],
+        "US Santé":   ["Johnson & Johnson","Pfizer","UnitedHealth"],
+        "US Énergie": ["ExxonMobil","Chevron"],
+        "France":     ["LVMH","TotalEnergies","Airbus","Sanofi","BNP Paribas","L'Oréal","Schneider Electric","Capgemini","Hermès","Kering"],
+        "ETF":        ["S&P 500 (SPY)","Nasdaq 100 (QQQ)","MSCI World (IWDA)","Total US Market (VTI)"],
+    }
+    heat_data = {"Secteur": [], "Nom": [], "Var (%)": [], "Poids": []}
+    for sector, names in SECTORS.items():
+        for nm in names:
+            tk = TICKERS_ONLY.get(nm)
+            if not tk: continue
+            try:
+                df_h = load_price_data(tk, "1mo")
+                if df_h.empty or len(df_h) < 2: continue
+                p  = to_eur(scalar(df_h["Close"].iloc[-1]), tk, eurusd)
+                p0 = to_eur(scalar(df_h["Close"].iloc[-2]), tk, eurusd)
+                heat_data["Secteur"].append(sector)
+                heat_data["Nom"].append(nm)
+                heat_data["Var (%)"].append(round((p - p0) / p0 * 100, 2))
+                heat_data["Poids"].append(1)
+            except Exception: pass
+    if heat_data["Nom"]:
+        import plotly.express as px
+        df_heat = pd.DataFrame(heat_data)
+        fig_heat = px.treemap(
+            df_heat, path=["Secteur", "Nom"], values="Poids",
+            color="Var (%)", color_continuous_scale="RdYlGn",
+            color_continuous_midpoint=0,
+            custom_data=["Var (%)"],
+        )
+        fig_heat.update_traces(
+            texttemplate="<b>%{label}</b><br>%{customdata[0]:+.2f}%",
+            hovertemplate="<b>%{label}</b><br>Variation : %{customdata[0]:+.2f}%<extra></extra>",
+        )
+        fig_heat.update_layout(template="plotly_dark", height=420,
+            coloraxis_colorbar=dict(title="%"),
+            margin=dict(l=0, r=0, t=10, b=0))
+        st.plotly_chart(fig_heat, use_container_width=True)
 
     st.divider()
     st.subheader("Opportunités RSI")
@@ -664,7 +718,7 @@ elif page == "Mon Portefeuille":
     portfolio    = get_portfolio()
     transactions = get_transactions()
 
-    tab_pos, tab_tx, tab_chart = st.tabs(["Positions", "Historique transactions", "Graphiques"])
+    tab_pos, tab_tx, tab_chart, tab_journal = st.tabs(["Positions", "Historique transactions", "Graphiques", "Journal"])
 
     # ── Onglet Positions ──────────────────────────────────────────────────────
     with tab_pos:
@@ -752,6 +806,66 @@ elif page == "Mon Portefeuille":
                         upsert_position(tx_ticker, tx_sel, new_qty, pos["prix_achat"])
                 st.success("Transaction enregistrée et position mise à jour.")
                 st.rerun()
+
+        with st.expander("📂 Importer un fichier CSV"):
+            st.caption("Format attendu : colonnes `date`, `ticker`, `action` (achat/vente), `quantite`, `prix` — ou format Degiro détecté automatiquement.")
+            uploaded = st.file_uploader("Choisir un CSV", type="csv", key="csv_upload")
+            if uploaded:
+                try:
+                    df_csv = pd.read_csv(uploaded, sep=None, engine="python")
+                    cols = [c.lower().strip() for c in df_csv.columns]
+                    df_csv.columns = cols
+
+                    # Détection Degiro (français)
+                    if "quantité" in cols and "cours" in cols and "produit" in cols:
+                        df_csv = df_csv.rename(columns={"date": "date", "quantité": "quantite", "cours": "prix"})
+                        df_csv["action"] = df_csv["quantite"].apply(lambda x: "achat" if float(str(x).replace(",",".")) > 0 else "vente")
+                        df_csv["quantite"] = df_csv["quantite"].apply(lambda x: abs(float(str(x).replace(",","."))))
+                        df_csv["prix"] = df_csv["prix"].apply(lambda x: float(str(x).replace(",",".")))
+                        df_csv["ticker"] = ""
+                        df_csv["nom"] = df_csv.get("produit", "")
+                        st.info("Format Degiro détecté. Renseigne le ticker pour chaque ligne (colonne ticker vide).")
+
+                    required = {"date", "ticker", "action", "quantite", "prix"}
+                    missing  = required - set(df_csv.columns)
+                    if missing:
+                        st.error(f"Colonnes manquantes : {', '.join(missing)}")
+                    else:
+                        df_csv["date"]     = pd.to_datetime(df_csv["date"], dayfirst=True).dt.strftime("%Y-%m-%d")
+                        df_csv["quantite"] = pd.to_numeric(df_csv["quantite"], errors="coerce")
+                        df_csv["prix"]     = pd.to_numeric(df_csv["prix"],     errors="coerce")
+                        df_csv["montant"]  = (df_csv["quantite"] * df_csv["prix"]).round(2)
+                        df_csv["action"]   = df_csv["action"].str.lower().str.strip()
+                        df_csv             = df_csv.dropna(subset=["quantite","prix"])
+                        st.dataframe(df_csv[["date","ticker","action","quantite","prix","montant"]].head(20),
+                                     use_container_width=True, hide_index=True)
+                        st.caption(f"{len(df_csv)} transaction(s) trouvée(s)")
+                        if st.button("✅ Importer toutes les transactions"):
+                            portfolio = get_portfolio()
+                            for _, row in df_csv.iterrows():
+                                tk = str(row["ticker"]).upper().strip()
+                                if not tk: continue
+                                nom = str(row.get("nom", tk))
+                                tx  = {"id": str(uuid.uuid4())[:8], "date": row["date"],
+                                       "ticker": tk, "nom": nom, "action": row["action"],
+                                       "quantite": float(row["quantite"]), "prix": float(row["prix"]),
+                                       "montant": float(row["montant"])}
+                                add_transaction(tx)
+                                pos = portfolio.get(tk, {"nom": nom, "quantite": 0, "prix_achat": float(row["prix"])})
+                                if row["action"] == "achat":
+                                    old_qty, old_p = pos["quantite"], pos["prix_achat"]
+                                    new_qty = old_qty + float(row["quantite"])
+                                    new_p   = (old_qty * old_p + float(row["quantite"]) * float(row["prix"])) / new_qty
+                                    upsert_position(tk, nom, new_qty, new_p)
+                                    portfolio[tk] = {"nom": nom, "quantite": new_qty, "prix_achat": new_p}
+                                else:
+                                    new_qty = max(0, pos["quantite"] - float(row["quantite"]))
+                                    if new_qty == 0: delete_position(tk)
+                                    else: upsert_position(tk, nom, new_qty, pos["prix_achat"])
+                            st.success(f"{len(df_csv)} transaction(s) importée(s) !")
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"Erreur lecture CSV : {e}")
 
         if transactions:
             df_tx = pd.DataFrame(transactions)
@@ -849,6 +963,99 @@ elif page == "Mon Portefeuille":
                     title="Drawdown (%)", yaxis_title="%",
                     margin=dict(l=10, r=10, t=40, b=10))
                 st.plotly_chart(fig_dd, use_container_width=True)
+
+    # ── Onglet Journal ────────────────────────────────────────────────────────
+    with tab_journal:
+        st.caption("Note personnelle par position : thèse d'investissement, objectif de prix, date de revue.")
+        portfolio = get_portfolio()
+        journal   = get_journal()
+
+        if not portfolio:
+            st.info("Aucune position dans le portefeuille.")
+        else:
+            for tk_j, pos in portfolio.items():
+                entry = journal.get(tk_j, {})
+                with st.expander(f"**{pos['nom']}** ({tk_j})", expanded=False):
+                    df_j = load_price_data(tk_j, "1mo")
+                    cur  = to_eur(scalar(df_j["Close"].iloc[-1]), tk_j, eurusd) if not df_j.empty else None
+
+                    jc1, jc2 = st.columns([3, 1])
+                    with jc1:
+                        note = st.text_area("Notes / thèse d'investissement",
+                                            value=entry.get("note", ""),
+                                            key=f"note_{tk_j}", height=100)
+                    with jc2:
+                        target = st.number_input("Prix cible (€)", min_value=0.0, step=0.5,
+                                                 value=float(entry.get("target_price") or 0),
+                                                 key=f"target_{tk_j}")
+                        rev_date = st.date_input("Date de revue",
+                                                 value=date.fromisoformat(entry["review_date"]) if entry.get("review_date") else date.today(),
+                                                 key=f"rev_{tk_j}")
+                        if cur and target > 0:
+                            upside = (target - cur) / cur * 100
+                            color  = "#00c853" if upside > 0 else "#ef5350"
+                            st.markdown(f"Potentiel : <span style='color:{color};font-weight:bold'>{upside:+.1f}%</span>", unsafe_allow_html=True)
+
+                    if st.button("Enregistrer", key=f"save_{tk_j}"):
+                        save_journal(tk_j, note, target or None, str(rev_date))
+                        st.success("Enregistré.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PAGE : COMPARAISON
+# ─────────────────────────────────────────────────────────────────────────────
+elif page == "Comparaison":
+    st.title("Comparaison d'actions")
+    st.caption("Performance relative normalisée à 100 à la date de départ.")
+
+    selected = st.multiselect("Choisir 2 à 4 actions à comparer",
+                              list(active_tickers.keys()), max_selections=4,
+                              placeholder="Sélectionne des actions…")
+
+    if len(selected) < 2:
+        st.info("Sélectionne au moins 2 actions pour comparer.")
+    else:
+        fig_cmp = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                                row_heights=[0.65, 0.35], vertical_spacing=0.05,
+                                subplot_titles=("Performance relative (base 100)", "RSI"))
+        tbl_rows = []
+        for nm in selected:
+            tk  = active_tickers[nm]
+            df  = load_price_data(tk, period)
+            if df.empty: continue
+            fx  = 1.0 if get_ticker_currency(tk) == "EUR" else 1.0 / eurusd
+            dv  = filter_display(df, period)
+            close_eur = dv["Close"] * fx
+            norm      = close_eur / close_eur.iloc[0] * 100
+
+            last_rsi  = scalar(dv["RSI"].iloc[-1]) if not pd.isna(dv["RSI"].iloc[-1]) else None
+            perf_tot  = (float(close_eur.iloc[-1]) / float(close_eur.iloc[0]) - 1) * 100
+            cur_p     = float(close_eur.iloc[-1])
+
+            fig_cmp.add_trace(go.Scatter(x=dv.index, y=norm, name=nm, mode="lines",
+                line=dict(width=2)), row=1, col=1)
+            fig_cmp.add_trace(go.Scatter(x=dv.index, y=dv["RSI"], name=f"RSI {nm}",
+                mode="lines", line=dict(width=1.5, dash="dot")), row=2, col=1)
+            tbl_rows.append({"Action": nm, "Ticker": tk, "Prix (€)": round(cur_p, 2),
+                             "Perf (%)": round(perf_tot, 2), "RSI": round(last_rsi, 1) if last_rsi else "—"})
+
+        fig_cmp.add_hline(y=100, line_dash="dash", line_color="#9e9e9e", row=1, col=1)
+        fig_cmp.add_hline(y=70,  line_dash="dash", line_color="#ef5350", row=2, col=1)
+        fig_cmp.add_hline(y=30,  line_dash="dash", line_color="#26a69a", row=2, col=1)
+        fig_cmp.update_layout(height=620, template="plotly_dark",
+            legend=dict(orientation="h", y=1.02),
+            margin=dict(l=10, r=10, t=40, b=10))
+        st.plotly_chart(fig_cmp, use_container_width=True)
+
+        if tbl_rows:
+            st.subheader("Récapitulatif")
+            df_tbl = pd.DataFrame(tbl_rows).sort_values("Perf (%)", ascending=False)
+            def hl_cmp(row):
+                v = row["Perf (%)"]
+                if v > 0: return [""]*3 + ["color:#00c853;font-weight:bold"] + [""]
+                if v < 0: return [""]*3 + ["color:#ef5350;font-weight:bold"] + [""]
+                return [""]*len(row)
+            st.dataframe(df_tbl.style.apply(hl_cmp, axis=1), use_container_width=True, hide_index=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

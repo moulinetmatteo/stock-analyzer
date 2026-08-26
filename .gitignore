@@ -9,6 +9,9 @@ watchlist_custom.json
 # Logs
 *.log
 
+# Secrets locaux
+.streamlit/secrets.toml
+
 # Python
 __pycache__/
 *.pyc

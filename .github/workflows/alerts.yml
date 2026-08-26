@@ -1,0 +1,48 @@
+name: Vérification alertes & scan
+
+on:
+  schedule:
+    # Alertes prix : toutes les 30 min, 9h–18h UTC+2 = 7h–16h UTC, lun–ven
+    - cron: "*/30 7-16 * * 1-5"
+  workflow_dispatch:  # Permet de lancer manuellement
+
+jobs:
+  check-alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install yfinance pandas supabase urllib3
+
+      - name: Vérifier les alertes prix
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python check_alerts.py
+
+  morning-scan:
+    runs-on: ubuntu-latest
+    # Scan uniquement à 9h30 (7h30 UTC) — on filtre par heure
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install yfinance pandas supabase urllib3
+
+      - name: Scan opportunités
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python scan_opportunities.py

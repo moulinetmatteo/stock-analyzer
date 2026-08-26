@@ -4,13 +4,13 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import json
 import uuid
 from datetime import datetime, date
-from pathlib import Path
 import subprocess
 import urllib.request
 import urllib.parse
+import streamlit_authenticator as stauth
+from supabase import create_client
 
 st.set_page_config(page_title="Stock Analyzer", layout="wide", page_icon="📈")
 
@@ -51,32 +51,93 @@ TICKERS_ONLY = {k: v for k, v in WATCHLIST.items() if v is not None}
 PERIOD_OPTIONS = {"14 jours": "14d", "1 mois": "1mo", "3 mois": "3mo", "6 mois": "6mo", "1 an": "1y", "2 ans": "2y"}
 DOWNLOAD_PERIOD = {"14d": "6mo", "1mo": "6mo", "3mo": "6mo", "6mo": "6mo", "1y": "1y", "2y": "2y"}
 
-DATA_DIR = Path(__file__).parent
-PORTFOLIO_FILE  = DATA_DIR / "portfolio.json"
-ALERTS_FILE     = DATA_DIR / "alerts.json"
-TELEGRAM_FILE   = DATA_DIR / "telegram_config.json"
-TRANSACTIONS_FILE = DATA_DIR / "transactions.json"
-WATCHLIST_FILE    = DATA_DIR / "watchlist_custom.json"
+
+# ── Supabase ──────────────────────────────────────────────────────────────────
+@st.cache_resource
+def init_supabase():
+    return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
+
+supabase = init_supabase()
 
 
-# ── Helpers JSON ──────────────────────────────────────────────────────────────
-def load_json(path: Path):
-    if path.exists():
-        return json.loads(path.read_text())
-    return {} if path.suffix == ".json" else []
+# ── Authentification ──────────────────────────────────────────────────────────
+authenticator = stauth.Authenticate(
+    dict(st.secrets["credentials"]),
+    st.secrets["cookie"]["name"],
+    st.secrets["cookie"]["key"],
+    int(st.secrets["cookie"]["expiry_days"]),
+)
+authenticator.login()
 
-def load_list(path: Path) -> list:
-    if path.exists():
-        data = json.loads(path.read_text())
-        return data if isinstance(data, list) else []
-    return []
+if not st.session_state.get("authentication_status"):
+    if st.session_state.get("authentication_status") is False:
+        st.error("❌ Nom d'utilisateur ou mot de passe incorrect")
+    else:
+        st.info("👋 Connectez-vous pour accéder à votre Stock Analyzer")
+    st.stop()
 
-def save_json(path: Path, data):
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+UID       = st.session_state["username"]
+USER_NAME = st.session_state["name"]
 
-def load_custom_watchlist() -> dict:
-    data = load_json(WATCHLIST_FILE)
-    return data if isinstance(data, dict) else {}
+
+# ── Données Supabase ──────────────────────────────────────────────────────────
+def get_portfolio() -> dict:
+    rows = supabase.table("portfolio").select("*").eq("user_id", UID).execute().data
+    return {r["ticker"]: {"nom": r["nom"], "quantite": r["quantite"], "prix_achat": r["prix_achat"]} for r in rows}
+
+def upsert_position(ticker: str, nom: str, qty: float, price: float):
+    supabase.table("portfolio").upsert(
+        {"user_id": UID, "ticker": ticker, "nom": nom, "quantite": qty, "prix_achat": price},
+        on_conflict="user_id,ticker"
+    ).execute()
+
+def delete_position(ticker: str):
+    supabase.table("portfolio").delete().eq("user_id", UID).eq("ticker", ticker).execute()
+
+def get_transactions() -> list:
+    return supabase.table("transactions").select("*").eq("user_id", UID).order("date", desc=True).execute().data
+
+def add_transaction(tx: dict):
+    supabase.table("transactions").insert({**tx, "user_id": UID}).execute()
+
+def delete_transaction(tx_id: str):
+    supabase.table("transactions").delete().eq("user_id", UID).eq("id", tx_id).execute()
+
+def get_alerts() -> dict:
+    rows = supabase.table("alerts").select("*").eq("user_id", UID).execute().data
+    return {r["ticker"]: {"nom": r["nom"], "seuil_bas": r.get("seuil_bas"), "seuil_haut": r.get("seuil_haut")} for r in rows}
+
+def upsert_alert(ticker: str, nom: str, seuil_bas, seuil_haut):
+    supabase.table("alerts").upsert(
+        {"user_id": UID, "ticker": ticker, "nom": nom, "seuil_bas": seuil_bas, "seuil_haut": seuil_haut},
+        on_conflict="user_id,ticker"
+    ).execute()
+
+def delete_alert(ticker: str):
+    supabase.table("alerts").delete().eq("user_id", UID).eq("ticker", ticker).execute()
+
+def get_custom_watchlist() -> dict:
+    rows = supabase.table("watchlist_custom").select("*").eq("user_id", UID).execute().data
+    return {r["nom"]: r["ticker"] for r in rows}
+
+def upsert_custom_ticker(nom: str, ticker: str):
+    supabase.table("watchlist_custom").upsert(
+        {"user_id": UID, "nom": nom, "ticker": ticker},
+        on_conflict="user_id,nom"
+    ).execute()
+
+def delete_custom_ticker(nom: str):
+    supabase.table("watchlist_custom").delete().eq("user_id", UID).eq("nom", nom).execute()
+
+def get_tg_config() -> dict:
+    rows = supabase.table("telegram_config").select("*").eq("user_id", UID).execute().data
+    return rows[0] if rows else {}
+
+def save_tg_config(token: str, chat_id: str):
+    supabase.table("telegram_config").upsert(
+        {"user_id": UID, "token": token, "chat_id": chat_id},
+        on_conflict="user_id"
+    ).execute()
 
 
 # ── Indicateurs ───────────────────────────────────────────────────────────────
@@ -89,8 +150,8 @@ def compute_rsi(close: pd.Series, length: int = 14) -> pd.Series:
 def compute_macd(close, fast=12, slow=26, signal=9):
     ema_f = close.ewm(span=fast, adjust=False).mean()
     ema_s = close.ewm(span=slow, adjust=False).mean()
-    macd = ema_f - ema_s
-    sig  = macd.ewm(span=signal, adjust=False).mean()
+    macd  = ema_f - ema_s
+    sig   = macd.ewm(span=signal, adjust=False).mean()
     return macd, sig, macd - sig
 
 def compute_bollinger(close, length=20, std=2.0):
@@ -99,7 +160,7 @@ def compute_bollinger(close, length=20, std=2.0):
     return mid, mid + std * rs, mid - std * rs
 
 def compute_stochastic(high, low, close, k=14, d=3):
-    lo = low.rolling(k).min(); hi = high.rolling(k).max()
+    lo    = low.rolling(k).min(); hi = high.rolling(k).max()
     pct_k = (close - lo) / (hi - lo) * 100
     return pct_k, pct_k.rolling(d).mean()
 
@@ -110,10 +171,10 @@ def load_price_data(ticker: str, period: str) -> pd.DataFrame:
     df = yf.download(ticker, period=dl, auto_adjust=True, progress=False)
     if df.empty: return df
     df.columns = df.columns.get_level_values(0)
-    df["RSI"] = compute_rsi(df["Close"])
+    df["RSI"]  = compute_rsi(df["Close"])
     df["MACD"], df["MACD_signal"], df["MACD_hist"] = compute_macd(df["Close"])
-    df["EMA20"]  = df["Close"].ewm(span=20, adjust=False).mean()
-    df["EMA50"]  = df["Close"].ewm(span=50, adjust=False).mean()
+    df["EMA20"]  = df["Close"].ewm(span=20,  adjust=False).mean()
+    df["EMA50"]  = df["Close"].ewm(span=50,  adjust=False).mean()
     df["EMA200"] = df["Close"].ewm(span=200, adjust=False).mean()
     df["BB_mid"], df["BB_up"], df["BB_low"] = compute_bollinger(df["Close"])
     df["STOCH_K"], df["STOCH_D"] = compute_stochastic(df["High"], df["Low"], df["Close"])
@@ -128,13 +189,13 @@ def load_fundamentals(ticker: str) -> dict:
         info = yf.Ticker(ticker).info
         return {
             "Capitalisation": info.get("marketCap"),
-            "P/E ratio": info.get("trailingPE"),
-            "Dividende (%)": info.get("dividendYield"),
-            "Beta": info.get("beta"),
-            "52s haut": info.get("fiftyTwoWeekHigh"),
-            "52s bas": info.get("fiftyTwoWeekLow"),
-            "Secteur": info.get("sector", "—"),
-            "Devise": info.get("currency", ""),
+            "P/E ratio":      info.get("trailingPE"),
+            "Dividende (%)":  info.get("dividendYield"),
+            "Beta":           info.get("beta"),
+            "52s haut":       info.get("fiftyTwoWeekHigh"),
+            "52s bas":        info.get("fiftyTwoWeekLow"),
+            "Secteur":        info.get("sector", "—"),
+            "Devise":         info.get("currency", ""),
         }
     except Exception: return {}
 
@@ -142,7 +203,9 @@ def load_fundamentals(ticker: str) -> dict:
 def get_eurusd() -> float:
     try:
         df = yf.download("EURUSD=X", period="5d", auto_adjust=True, progress=False)
-        if not df.empty: return float(df["Close"].iloc[-1])
+        if not df.empty:
+            df.columns = df.columns.get_level_values(0)
+            return float(df["Close"].iloc[-1])
     except Exception: pass
     return 1.08
 
@@ -192,24 +255,26 @@ def get_earnings_date(ticker: str) -> str:
         cal = yf.Ticker(ticker).calendar
         if isinstance(cal, dict):
             ed = cal.get("Earnings Date", [])
-            if ed:
-                return str(ed[0])[:10]
+            if ed: return str(ed[0])[:10]
         elif hasattr(cal, "empty") and not cal.empty and "Earnings Date" in cal.index:
             return str(cal.loc["Earnings Date"].iloc[0])[:10]
-    except Exception:
-        pass
+    except Exception: pass
     return ""
 
 
 # ── Session state ─────────────────────────────────────────────────────────────
 eurusd = get_eurusd()
 if "tg_config" not in st.session_state:
-    st.session_state.tg_config = load_json(TELEGRAM_FILE)
+    st.session_state.tg_config = get_tg_config()
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 st.sidebar.title("📈 Stock Analyzer")
+st.sidebar.caption(f"Connecté : **{USER_NAME}**")
 st.sidebar.caption(f"1 € = {eurusd:.4f} $")
+authenticator.logout("🚪 Déconnexion", "sidebar")
+st.sidebar.divider()
+
 page = st.sidebar.radio("Navigation", [
     "Dashboard", "Screener", "Analyse détaillée",
     "Mon Portefeuille", "Backtesting", "Alertes", "Paramètres"
@@ -218,13 +283,13 @@ period_label = st.sidebar.selectbox("Période", list(PERIOD_OPTIONS.keys()), ind
 period = PERIOD_OPTIONS[period_label]
 custom_ticker = st.sidebar.text_input("Ticker personnalisé", placeholder="ex: AIR.PA, AAPL")
 
-custom_wl = load_custom_watchlist()
+custom_wl = get_custom_watchlist()
 active_tickers = {**TICKERS_ONLY, **custom_wl}
 if custom_ticker.strip():
     active_tickers[custom_ticker.upper()] = custom_ticker.upper()
 
 # Alertes sidebar
-alerts = load_json(ALERTS_FILE)
+alerts = get_alerts()
 triggered_sidebar = []
 for tk, alert in alerts.items():
     try:
@@ -249,9 +314,8 @@ if triggered_sidebar:
 if page == "Dashboard":
     st.title("Dashboard")
 
-    portfolio = load_json(PORTFOLIO_FILE)
+    portfolio = get_portfolio()
 
-    # ── Résumé portefeuille ───────────────────────────────────────────────────
     if portfolio:
         total_val, total_invest = 0.0, 0.0
         for tk, pos in portfolio.items():
@@ -268,7 +332,6 @@ if page == "Dashboard":
         c3.metric("P&L total",               f"{pnl:+,.2f} €", f"{pnl_pct:+.2f}%")
         st.divider()
 
-    # ── Top movers du jour ────────────────────────────────────────────────────
     st.subheader("Mouvements du jour")
     movers = []
     sample = list(TICKERS_ONLY.items())[:20]
@@ -294,8 +357,6 @@ if page == "Dashboard":
             st.dataframe(df_mv.tail(5).iloc[::-1], use_container_width=True, hide_index=True)
 
     st.divider()
-
-    # ── Opportunités RSI ──────────────────────────────────────────────────────
     st.subheader("Opportunités RSI")
     opp_buy, opp_sell = [], []
     for nm, tk in list(TICKERS_ONLY.items())[:20]:
@@ -304,7 +365,7 @@ if page == "Dashboard":
             if df_o.empty: continue
             rsi_v = scalar(df_o["RSI"].iloc[-1])
             p_v   = to_eur(scalar(df_o["Close"].iloc[-1]), tk, eurusd)
-            if rsi_v < 30:  opp_buy.append({"Action": nm, "Prix (€)": round(p_v,2), "RSI": round(rsi_v,1)})
+            if rsi_v < 30:   opp_buy.append({"Action": nm, "Prix (€)": round(p_v,2), "RSI": round(rsi_v,1)})
             elif rsi_v > 70: opp_sell.append({"Action": nm, "Prix (€)": round(p_v,2), "RSI": round(rsi_v,1)})
         except Exception: pass
     ob, os_ = st.columns(2)
@@ -327,14 +388,11 @@ if page == "Dashboard":
     with st.spinner("Chargement des dates…"):
         earnings_rows = []
         checked = set()
-        # Portfolio en priorité, puis watchlist
         priority = list(portfolio.keys()) if portfolio else []
         for nm, tk in list(TICKERS_ONLY.items())[:20]:
-            if tk not in priority:
-                priority.append(tk)
+            if tk not in priority: priority.append(tk)
         for tk in priority[:22]:
-            if tk in checked:
-                continue
+            if tk in checked: continue
             checked.add(tk)
             ed = get_earnings_date(tk)
             if ed and ed >= str(date.today()):
@@ -342,7 +400,7 @@ if page == "Dashboard":
                 if not nom:
                     nom = next((n for n, t in TICKERS_ONLY.items() if t == tk), tk)
                 earnings_rows.append({"Action": nom, "Ticker": tk, "Date résultats": ed,
-                                      "En portefeuille": "✅" if tk in (portfolio or {}) else ""})
+                                      "En portefeuille": "✅" if tk in portfolio else ""})
     if earnings_rows:
         df_earn = pd.DataFrame(earnings_rows).sort_values("Date résultats")
         st.dataframe(df_earn, use_container_width=True, hide_index=True)
@@ -404,9 +462,9 @@ elif page == "Screener":
 # ─────────────────────────────────────────────────────────────────────────────
 elif page == "Analyse détaillée":
     st.title("Analyse détaillée")
-    sel = st.selectbox("Choisir une action", list(active_tickers.keys()))
+    sel    = st.selectbox("Choisir une action", list(active_tickers.keys()))
     ticker = active_tickers[sel]
-    df = load_price_data(ticker, period)
+    df     = load_price_data(ticker, period)
     if df.empty: st.error(f"Données indisponibles pour {ticker}."); st.stop()
 
     last, prev = df.iloc[-1], df.iloc[-2]
@@ -529,7 +587,7 @@ elif page == "Analyse détaillée":
     try:
         news = yf.Ticker(ticker).news or []
         for art in news[:6]:
-            ct = art.get("content", {})
+            ct    = art.get("content", {})
             title = ct.get("title") or art.get("title", "—")
             pub   = ct.get("provider", {}).get("displayName") or art.get("publisher", "")
             url   = (ct.get("canonicalUrl", {}).get("url")
@@ -551,8 +609,8 @@ elif page == "Analyse détaillée":
 # ─────────────────────────────────────────────────────────────────────────────
 elif page == "Mon Portefeuille":
     st.title("Mon Portefeuille")
-    portfolio = load_json(PORTFOLIO_FILE)
-    transactions = load_list(TRANSACTIONS_FILE)
+    portfolio    = get_portfolio()
+    transactions = get_transactions()
 
     tab_pos, tab_tx, tab_chart = st.tabs(["Positions", "Historique transactions", "Graphiques"])
 
@@ -562,11 +620,10 @@ elif page == "Mon Portefeuille":
             all_names = list(active_tickers.keys())
             sel_p = st.selectbox("Action", all_names, key="port_sel")
             tk_p  = active_tickers[sel_p]
-            qty   = st.number_input("Quantité", min_value=0.01, step=1.0, value=1.0, key="port_qty")
+            qty   = st.number_input("Quantité", min_value=0.01, step=1.0,  value=1.0,   key="port_qty")
             buy_p = st.number_input("Prix d'achat moyen (€)", min_value=0.01, step=0.01, value=100.0, key="port_price")
             if st.button("Enregistrer la position"):
-                portfolio[tk_p] = {"nom": sel_p, "quantite": qty, "prix_achat": buy_p}
-                save_json(PORTFOLIO_FILE, portfolio)
+                upsert_position(tk_p, sel_p, qty, buy_p)
                 st.success(f"Position {sel_p} enregistrée.")
                 st.rerun()
 
@@ -588,7 +645,7 @@ elif page == "Mon Portefeuille":
             pnl_t = tv - ti
             c1,c2,c3 = st.columns(3)
             c1.metric("Valeur totale", f"{tv:,.2f} €")
-            c2.metric("Investi", f"{ti:,.2f} €")
+            c2.metric("Investi",       f"{ti:,.2f} €")
             c3.metric("P&L", f"{pnl_t:+,.2f} €", f"{pnl_t/ti*100:+.2f}%" if ti else "—")
             st.divider()
 
@@ -602,7 +659,7 @@ elif page == "Mon Portefeuille":
             st.divider()
             to_del = st.selectbox("Supprimer une position", ["—"] + list(portfolio.keys()))
             if st.button("Supprimer") and to_del != "—":
-                del portfolio[to_del]; save_json(PORTFOLIO_FILE, portfolio); st.rerun()
+                delete_position(to_del); st.rerun()
 
     # ── Onglet Transactions ───────────────────────────────────────────────────
     with tab_tx:
@@ -612,65 +669,64 @@ elif page == "Mon Portefeuille":
             tx_ticker = active_tickers[tx_sel]
             tx_action = st.radio("Type", ["Achat", "Vente"], horizontal=True)
             tx_date   = st.date_input("Date", value=date.today())
-            tx_qty    = st.number_input("Quantité", min_value=0.01, step=1.0, value=1.0, key="tx_qty")
+            tx_qty    = st.number_input("Quantité", min_value=0.01, step=1.0,  value=1.0,   key="tx_qty")
             tx_price  = st.number_input("Prix unitaire (€)", min_value=0.01, step=0.01, value=100.0, key="tx_price")
 
             if st.button("Enregistrer la transaction"):
-                transactions.append({
-                    "id": str(uuid.uuid4())[:8],
-                    "date": str(tx_date),
-                    "ticker": tx_ticker,
-                    "nom": tx_sel,
-                    "action": tx_action.lower(),
+                tx = {
+                    "id":       str(uuid.uuid4())[:8],
+                    "date":     str(tx_date),
+                    "ticker":   tx_ticker,
+                    "nom":      tx_sel,
+                    "action":   tx_action.lower(),
                     "quantite": tx_qty,
-                    "prix": tx_price,
-                    "montant": round(tx_qty * tx_price, 2),
-                })
-                save_json(TRANSACTIONS_FILE, transactions)
+                    "prix":     tx_price,
+                    "montant":  round(tx_qty * tx_price, 2),
+                }
+                add_transaction(tx)
                 # Mise à jour automatique de la position
-                if tx_ticker not in portfolio:
-                    portfolio[tx_ticker] = {"nom": tx_sel, "quantite": 0, "prix_achat": tx_price}
-                pos = portfolio[tx_ticker]
+                portfolio = get_portfolio()
+                pos = portfolio.get(tx_ticker, {"nom": tx_sel, "quantite": 0, "prix_achat": tx_price})
                 if tx_action == "Achat":
-                    old_qty = pos["quantite"]; old_price = pos["prix_achat"]
+                    old_qty, old_price = pos["quantite"], pos["prix_achat"]
                     new_qty = old_qty + tx_qty
-                    pos["prix_achat"] = (old_qty * old_price + tx_qty * tx_price) / new_qty
-                    pos["quantite"] = new_qty
+                    new_price = (old_qty * old_price + tx_qty * tx_price) / new_qty
+                    upsert_position(tx_ticker, tx_sel, new_qty, new_price)
                 else:
-                    pos["quantite"] = max(0, pos["quantite"] - tx_qty)
-                if pos["quantite"] == 0:
-                    del portfolio[tx_ticker]
-                else:
-                    portfolio[tx_ticker] = pos
-                save_json(PORTFOLIO_FILE, portfolio)
+                    new_qty = max(0, pos["quantite"] - tx_qty)
+                    if new_qty == 0:
+                        delete_position(tx_ticker)
+                    else:
+                        upsert_position(tx_ticker, tx_sel, new_qty, pos["prix_achat"])
                 st.success("Transaction enregistrée et position mise à jour.")
                 st.rerun()
 
         if transactions:
-            df_tx = pd.DataFrame(sorted(transactions, key=lambda x: x["date"], reverse=True))
-            df_tx = df_tx[["date","nom","ticker","action","quantite","prix","montant"]]
-            df_tx.columns = ["Date","Nom","Ticker","Action","Qté","Prix (€)","Montant (€)"]
+            df_tx = pd.DataFrame(transactions)
+            cols_show = ["date","nom","ticker","action","quantite","prix","montant"]
+            df_tx = df_tx[[c for c in cols_show if c in df_tx.columns]]
+            df_tx.columns = ["Date","Nom","Ticker","Action","Qté","Prix (€)","Montant (€)"][:len(df_tx.columns)]
 
             def hl_tx(row):
-                if row["Action"] == "achat": return ["background-color:#1b5e20;color:white"]*len(row)
+                if str(row.get("Action","")).lower() == "achat":
+                    return ["background-color:#1b5e20;color:white"]*len(row)
                 return ["background-color:#b71c1c;color:white"]*len(row)
 
             st.dataframe(df_tx.style.apply(hl_tx, axis=1), use_container_width=True, hide_index=True)
 
-            to_del_tx = st.selectbox("Supprimer une transaction (par ID)", ["—"] + [t["id"] for t in transactions])
+            all_ids = [t["id"] for t in transactions]
+            to_del_tx = st.selectbox("Supprimer une transaction (par ID)", ["—"] + all_ids)
             if st.button("Supprimer transaction") and to_del_tx != "—":
-                transactions = [t for t in transactions if t["id"] != to_del_tx]
-                save_json(TRANSACTIONS_FILE, transactions); st.rerun()
+                delete_transaction(to_del_tx); st.rerun()
         else:
             st.info("Aucune transaction enregistrée.")
 
     # ── Onglet Graphiques ─────────────────────────────────────────────────────
     with tab_chart:
-        portfolio = load_json(PORTFOLIO_FILE)
+        portfolio = get_portfolio()
         if not portfolio:
             st.info("Aucune position pour afficher les graphiques.")
         else:
-            # Camembert de répartition
             pie_labels, pie_vals = [], []
             for tk_p, pos in portfolio.items():
                 df_p = load_price_data(tk_p, "1mo")
@@ -684,7 +740,6 @@ elif page == "Mon Portefeuille":
                 margin=dict(l=10,r=10,t=50,b=10))
             st.plotly_chart(fig_pie, use_container_width=True)
 
-            # Évolution de la valeur dans le temps
             st.subheader("Évolution de la valeur")
             with st.spinner("Calcul en cours…"):
                 portfolio_ts = None
@@ -707,7 +762,6 @@ elif page == "Mon Portefeuille":
                     yaxis_title="Valeur (€)", margin=dict(l=10,r=10,t=30,b=10))
                 st.plotly_chart(fig_ts, use_container_width=True)
 
-                # ── Métriques de risque ───────────────────────────────────────
                 st.divider()
                 st.subheader("📊 Métriques de risque")
                 daily_ret = portfolio_ts.pct_change().dropna()
@@ -721,7 +775,6 @@ elif page == "Mon Portefeuille":
                 drawdown    = (portfolio_ts - rolling_max) / rolling_max * 100
                 max_dd      = float(drawdown.min())
 
-                # Comparaison SPY
                 spy_df  = load_price_data("SPY", "1y")
                 spy_ret = 0.0
                 if not spy_df.empty:
@@ -736,7 +789,6 @@ elif page == "Mon Portefeuille":
                 r4.metric("vs S&P 500 (SPY)", f"{alpha:+.1f}%",
                           f"Portf. {total_ret:+.1f}% · SPY {spy_ret:+.1f}%")
 
-                # Courbe drawdown
                 fig_dd = go.Figure()
                 fig_dd.add_trace(go.Scatter(x=drawdown.index, y=drawdown.values,
                     fill="tozeroy", line=dict(color="#ef5350", width=1.5),
@@ -764,20 +816,18 @@ elif page == "Backtesting":
 
     st.markdown("#### Paramètres de la stratégie")
     sc1, sc2, sc3 = st.columns(3)
-    strategy  = sc1.selectbox("Stratégie", ["RSI seul", "MACD seul", "RSI + MACD (combiné)"])
-    rsi_buy   = sc2.slider("RSI seuil achat", 10, 40, 30)
-    rsi_sell  = sc3.slider("RSI seuil vente", 60, 90, 70)
-    capital   = st.number_input("Capital initial (€)", min_value=100.0, value=1000.0, step=100.0)
+    strategy = sc1.selectbox("Stratégie", ["RSI seul", "MACD seul", "RSI + MACD (combiné)"])
+    rsi_buy  = sc2.slider("RSI seuil achat", 10, 40, 30)
+    rsi_sell = sc3.slider("RSI seuil vente", 60, 90, 70)
+    capital  = st.number_input("Capital initial (€)", min_value=100.0, value=1000.0, step=100.0)
 
     if st.button("▶️ Lancer le backtesting", type="primary"):
         with st.spinner("Calcul…"):
             df_bt = load_price_data(bt_ticker, bt_period_code)
-            if df_bt.empty:
-                st.error("Données indisponibles."); st.stop()
-            fx = 1.0 if get_ticker_currency(bt_ticker) == "EUR" else 1.0/eurusd
+            if df_bt.empty: st.error("Données indisponibles."); st.stop()
+            fx    = 1.0 if get_ticker_currency(bt_ticker) == "EUR" else 1.0/eurusd
             close = df_bt["Close"] * fx
-            rsi_s = df_bt["RSI"]
-            macd_s, msig_s = df_bt["MACD"], df_bt["MACD_signal"]
+            rsi_s, macd_s, msig_s = df_bt["RSI"], df_bt["MACD"], df_bt["MACD_signal"]
 
             cash, shares, trades = capital, 0.0, []
             equity = []
@@ -796,7 +846,7 @@ elif page == "Backtesting":
                     prev_mcs = float(msig_s.iloc[i-1]) if i > 0 and not pd.isna(msig_s.iloc[i-1]) else mcs
                     buy_sig  = mc > mcs and prev_mc <= prev_mcs
                     sell_sig = mc < mcs and prev_mc >= prev_mcs
-                else:  # combiné
+                else:
                     buy_sig  = r < rsi_buy and mc > mcs
                     sell_sig = r > rsi_sell and mc < mcs
 
@@ -808,15 +858,12 @@ elif page == "Backtesting":
                     cash = shares * p; shares = 0
                     trades.append({"date": df_bt.index[i].strftime("%d/%m/%Y"),
                                    "action": "Vente", "prix": round(p,2), "montant": round(cash,2)})
-
                 equity.append(cash + shares * p)
 
-        # Métriques
-        final_val   = equity[-1]
-        total_ret   = (final_val - capital) / capital * 100
-        bh_ret      = (float(close.iloc[-1]) - float(close.iloc[0])) / float(close.iloc[0]) * 100
-        n_trades    = len(trades)
-        ventes      = [t for t in trades if t["action"] == "Vente"]
+        final_val = equity[-1]
+        total_ret = (final_val - capital) / capital * 100
+        bh_ret    = (float(close.iloc[-1]) - float(close.iloc[0])) / float(close.iloc[0]) * 100
+        n_trades  = len(trades)
 
         m1,m2,m3,m4 = st.columns(4)
         m1.metric("Valeur finale", f"{final_val:,.2f} €", f"{total_ret:+.2f}%")
@@ -826,7 +873,6 @@ elif page == "Backtesting":
         m4.metric("vs Buy-and-hold", f"{delta_vs_bh:+.2f}%",
                   "✓ Stratégie gagnante" if delta_vs_bh > 0 else "✗ Buy-and-hold meilleur")
 
-        # Graphique equity curve
         fig_bt = make_subplots(rows=2, cols=1, shared_xaxes=True,
                                row_heights=[0.65, 0.35], vertical_spacing=0.05,
                                subplot_titles=("Equity curve", "Prix + RSI"))
@@ -837,10 +883,9 @@ elif page == "Backtesting":
         fig_bt.add_trace(go.Scatter(x=df_bt.index, y=bh_curve, name="Buy & Hold",
             line=dict(color="#ffa726", width=1.5, dash="dot")), row=1, col=1)
 
-        # Markers achats/ventes
         for t in trades:
             try:
-                dt = datetime.strptime(t["date"], "%d/%m/%Y")
+                dt  = datetime.strptime(t["date"], "%d/%m/%Y")
                 idx = df_bt.index.get_indexer([dt], method="nearest")[0]
                 eq_val = equity[idx]
                 color  = "#00c853" if t["action"] == "Achat" else "#ef5350"
@@ -860,7 +905,6 @@ elif page == "Backtesting":
             legend=dict(orientation="h", y=1.02), margin=dict(l=10,r=10,t=40,b=10))
         st.plotly_chart(fig_bt, use_container_width=True)
 
-        # Historique des trades
         if trades:
             st.subheader(f"Trades exécutés ({n_trades})")
             df_trades = pd.DataFrame(trades)
@@ -877,7 +921,7 @@ elif page == "Backtesting":
 # ─────────────────────────────────────────────────────────────────────────────
 elif page == "Alertes":
     st.title("Alertes Prix")
-    alerts = load_json(ALERTS_FILE)
+    alerts = get_alerts()
 
     with st.expander("Créer une alerte", expanded=True):
         sel_a    = st.selectbox("Action", list(active_tickers.keys()), key="alert_sel")
@@ -889,9 +933,7 @@ elif page == "Alertes":
         seuil_bas  = ca.number_input("Seuil achat ≤ (€)", min_value=0.0, step=0.5, value=round(cur_p*0.95,2))
         seuil_haut = cb.number_input("Seuil vente ≥ (€)", min_value=0.0, step=0.5, value=round(cur_p*1.05,2))
         if st.button("Enregistrer l'alerte"):
-            alerts[ticker_a] = {"nom": sel_a,
-                "seuil_bas": seuil_bas or None, "seuil_haut": seuil_haut or None}
-            save_json(ALERTS_FILE, alerts)
+            upsert_alert(ticker_a, sel_a, seuil_bas or None, seuil_haut or None)
             st.success(f"Alerte enregistrée pour {sel_a}."); st.rerun()
 
     st.divider(); st.subheader("Alertes actives")
@@ -901,11 +943,11 @@ elif page == "Alertes":
         rows_a = []
         for tk_a, a in alerts.items():
             df_a2 = load_price_data(tk_a, "1mo")
-            p_a = to_eur(scalar(df_a2["Close"].iloc[-1]), tk_a, eurusd) if not df_a2.empty else None
+            p_a   = to_eur(scalar(df_a2["Close"].iloc[-1]), tk_a, eurusd) if not df_a2.empty else None
             status = "—"
             if p_a and a.get("seuil_bas") and p_a <= a["seuil_bas"]: status = "🟢 ACHAT déclenché"
             elif p_a and a.get("seuil_haut") and p_a >= a["seuil_haut"]: status = "🔴 VENTE déclenchée"
-            rows_a.append({"Action": a.get("nom",tk_a), "Ticker": tk_a,
+            rows_a.append({"Action": a.get("nom", tk_a), "Ticker": tk_a,
                 "Prix (€)": round(p_a,2) if p_a else "—",
                 "Seuil achat (€)": a.get("seuil_bas","—"),
                 "Seuil vente (€)": a.get("seuil_haut","—"), "Statut": status})
@@ -913,14 +955,14 @@ elif page == "Alertes":
         st.divider()
         to_del_a = st.selectbox("Supprimer", ["—"] + list(alerts.keys()))
         if st.button("Supprimer l'alerte") and to_del_a != "—":
-            del alerts[to_del_a]; save_json(ALERTS_FILE, alerts); st.rerun()
+            delete_alert(to_del_a); st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE : PARAMÈTRES
 # ─────────────────────────────────────────────────────────────────────────────
 elif page == "Paramètres":
-    st.title("Paramètres — Notifications")
+    st.title("Paramètres")
     tg = st.session_state.tg_config
 
     st.markdown("### Telegram")
@@ -928,46 +970,28 @@ elif page == "Paramètres":
                 "2. **@userinfobot** → `/start` → copie ton Chat ID")
     tg_token = st.text_input("Token du bot", value=tg.get("token",""), key="input_tg_token")
     tg_chat  = st.text_input("Chat ID",      value=tg.get("chat_id",""), key="input_tg_chat")
-    cs, ct = st.columns(2)
+    cs, ct   = st.columns(2)
     with cs:
         if st.button("Enregistrer"):
-            cfg = {"token": tg_token, "chat_id": tg_chat}
-            save_json(TELEGRAM_FILE, cfg); st.session_state.tg_config = cfg
+            save_tg_config(tg_token, tg_chat)
+            st.session_state.tg_config = {"token": tg_token, "chat_id": tg_chat}
             st.success("Enregistré.")
     with ct:
         if st.button("📱 Tester"):
             try:
-                url = f"https://api.telegram.org/bot{tg_token}/sendMessage"
+                url  = f"https://api.telegram.org/bot{tg_token}/sendMessage"
                 data = urllib.parse.urlencode({"chat_id": tg_chat,
                     "text": "✅ <b>Stock Analyzer fonctionne !</b>", "parse_mode": "HTML"}).encode()
                 urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=10)
-                cfg = {"token": tg_token, "chat_id": tg_chat}
-                save_json(TELEGRAM_FILE, cfg); st.session_state.tg_config = cfg
+                save_tg_config(tg_token, tg_chat)
+                st.session_state.tg_config = {"token": tg_token, "chat_id": tg_chat}
                 st.success("Message envoyé !")
             except Exception as e: st.error(f"Erreur : {e}")
 
     st.divider()
-    st.markdown("### Vérification automatique")
-    st.code("~/stock-analyzer/install_cron.sh", language="bash")
-
-    cc, cs2 = st.columns(2)
-    with cc:
-        if st.button("▶️ Vérifier les alertes prix"):
-            r = subprocess.run(["/Library/Developer/CommandLineTools/usr/bin/python3", "-W", "ignore",
-                str(DATA_DIR / "check_alerts.py")], capture_output=True, text=True)
-            st.text(r.stdout or r.stderr or "Aucune alerte.")
-    with cs2:
-        if st.button("🔍 Scanner les opportunités"):
-            with st.spinner("Scan (~30 sec)…"):
-                r = subprocess.run(["/Library/Developer/CommandLineTools/usr/bin/python3", "-W", "ignore",
-                    str(DATA_DIR / "scan_opportunities.py")], capture_output=True, text=True)
-            st.text(r.stdout or r.stderr or "Aucune opportunité.")
-
-    st.divider()
     st.markdown("### 📋 Watchlist personnalisée")
-    st.caption("Ajoute ici des actions qui ne sont pas dans la liste par défaut. "
-               "Elles apparaîtront dans le Screener, l'Analyse et les Alertes.")
-    wl_custom = load_custom_watchlist()
+    st.caption("Ajoute des actions absentes de la liste par défaut.")
+    wl_custom = get_custom_watchlist()
 
     wl_col1, wl_col2 = st.columns(2)
     with wl_col1:
@@ -977,10 +1001,8 @@ elif page == "Paramètres":
             t = wl_ticker.strip().upper()
             if t:
                 label = wl_name.strip() or t
-                wl_custom[label] = t
-                save_json(WATCHLIST_FILE, wl_custom)
-                st.success(f"**{label}** ({t}) ajouté.")
-                st.rerun()
+                upsert_custom_ticker(label, t)
+                st.success(f"**{label}** ({t}) ajouté."); st.rerun()
             else:
                 st.warning("Saisis un ticker valide.")
 
@@ -991,8 +1013,6 @@ elif page == "Paramètres":
                 col_a, col_b = st.columns([4, 1])
                 col_a.markdown(f"**{nm}** — `{tk}`")
                 if col_b.button("🗑️", key=f"wldel_{tk}"):
-                    del wl_custom[nm]
-                    save_json(WATCHLIST_FILE, wl_custom)
-                    st.rerun()
+                    delete_custom_ticker(nm); st.rerun()
         else:
             st.caption("Aucune action ajoutée pour le moment.")

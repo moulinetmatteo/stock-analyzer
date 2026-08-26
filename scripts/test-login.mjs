@@ -42,7 +42,7 @@ try {
   catch { navigated = false; }
   const ms = Date.now() - t0;
   const body = await p.textContent('body');
-  console.log(`connexion réussie   : ${navigated && body.includes('Dashboard') ? 'OUI' : 'NON'}  (${(ms/1000).toFixed(1)}s, url: ${p.url().replace('BASE,'')||'/'})`);
+  console.log(`connexion réussie   : ${navigated && body.includes('Dashboard') ? 'OUI' : 'NON'}  (${(ms/1000).toFixed(1)}s, url: ${p.url().replace(BASE, '') || '/'})`);
   if (!navigated) console.log(`   message: ${(body.match(/Identifiants incorrects|Base de données injoignable/i)||['aucun message'])[0]}`);
 
   // Le cookie survit-il à un rechargement ?

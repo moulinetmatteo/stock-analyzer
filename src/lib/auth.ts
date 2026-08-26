@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual, randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
-import { supabase } from "./supabase/server";
+import { supabase, supabaseKey, keyKind } from "./supabase/server";
 
 const COOKIE = "sa_session";
 const MAX_AGE = 60 * 60 * 24 * 30; // 30 jours
@@ -24,16 +24,37 @@ export async function checkConfig(): Promise<{ ok: boolean; problems: string[] }
   const problems: string[] = [];
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) problems.push("NEXT_PUBLIC_SUPABASE_URL absente");
-  if (!process.env.SUPABASE_SERVICE_KEY && !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+
+  const kind = keyKind(supabaseKey);
+  if (!supabaseKey) {
     problems.push("SUPABASE_SERVICE_KEY absente");
+  } else if (kind === "anon") {
+    problems.push(
+      "SUPABASE_SERVICE_KEY contient une clé publique (anon/publishable). " +
+        "Elle est soumise à RLS : les connexions échoueront et les inscriptions " +
+        "seront refusées. Utilise la clé service_role (Supabase → Settings → API).",
+    );
+  } else if (kind === "inconnue") {
+    problems.push("SUPABASE_SERVICE_KEY n'a pas un format de clé Supabase reconnu.");
   }
+
   const s = process.env.SESSION_SECRET;
   if (!s) problems.push("SESSION_SECRET absente");
   else if (s.length < 16) problems.push("SESSION_SECRET trop courte");
 
   if (!problems.length) {
-    const { error } = await supabase.from("users").select("username").limit(1);
+    // Une lecture vide alors que la table contient forcément des comptes trahit
+    // un filtrage RLS que le format de clé n'aurait pas révélé.
+    const { error, count } = await supabase
+      .from("users")
+      .select("username", { count: "exact", head: true });
     if (error) problems.push(`Supabase refuse la requête : ${error.message}`);
+    else if (count === 0) {
+      problems.push(
+        "Supabase répond mais ne renvoie aucun compte — RLS filtre probablement " +
+          "la lecture. Vérifie que la clé est bien la service_role.",
+      );
+    }
   }
 
   return { ok: problems.length === 0, problems };

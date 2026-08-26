@@ -1,0 +1,19 @@
+# Données personnelles — ne jamais versionner
+telegram_config.json
+portfolio.json
+transactions.json
+alerts.json
+rsi_state.json
+watchlist_custom.json
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# macOS
+.DS_Store

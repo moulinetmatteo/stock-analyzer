@@ -11,9 +11,32 @@ const MAX_AGE = 60 * 60 * 24 * 30; // 30 jours
 function secret(): string {
   const s = process.env.SESSION_SECRET;
   if (!s || s.length < 16) {
-    throw new Error("SESSION_SECRET manquant ou trop court (32 caractères min).");
+    throw new Error(
+      "SESSION_SECRET manquant ou trop court (32 caractères min). " +
+        "Sur Vercel : Settings → Environment Variables, portée Production, puis redéployer.",
+    );
   }
   return s;
+}
+
+/** Diagnostic de configuration, sans jamais exposer les valeurs. */
+export async function checkConfig(): Promise<{ ok: boolean; problems: string[] }> {
+  const problems: string[] = [];
+
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) problems.push("NEXT_PUBLIC_SUPABASE_URL absente");
+  if (!process.env.SUPABASE_SERVICE_KEY && !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    problems.push("SUPABASE_SERVICE_KEY absente");
+  }
+  const s = process.env.SESSION_SECRET;
+  if (!s) problems.push("SESSION_SECRET absente");
+  else if (s.length < 16) problems.push("SESSION_SECRET trop courte");
+
+  if (!problems.length) {
+    const { error } = await supabase.from("users").select("username").limit(1);
+    if (error) problems.push(`Supabase refuse la requête : ${error.message}`);
+  }
+
+  return { ok: problems.length === 0, problems };
 }
 
 function sign(payload: string): string {
@@ -89,11 +112,18 @@ export async function login(
   const u = username.toLowerCase().trim();
   if (!u || !password) return { ok: false, error: "Remplis tous les champs." };
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("username,name,password_hash")
     .eq("username", u)
     .maybeSingle();
+
+  // Une base injoignable ne doit pas se confondre avec de mauvais identifiants :
+  // sinon une clé Supabase absente en production ressemble à une faute de frappe.
+  if (error) {
+    console.error("[auth] requête users échouée:", error.message);
+    return { ok: false, error: "Base de données injoignable — vérifie la configuration du serveur." };
+  }
 
   if (!data) return { ok: false, error: "Identifiants incorrects." };
 

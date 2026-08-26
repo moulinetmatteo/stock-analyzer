@@ -5,14 +5,46 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import uuid
-from datetime import datetime, date
+import json
+import hmac
+import hashlib
+from datetime import datetime, date, timedelta
 import subprocess
 import urllib.request
 import urllib.parse
 import bcrypt
 from supabase import create_client
+import extra_streamlit_components as stx
 
 st.set_page_config(page_title="Stock Analyzer", layout="wide", page_icon="📈")
+
+# ── Cookie auth ───────────────────────────────────────────────────────────────
+_COOKIE_NAME = st.secrets.get("cookie", {}).get("name", "sa_auth")
+_COOKIE_KEY  = st.secrets.get("cookie", {}).get("key", "changeme_32chars!!!!!!!!!!!!!!!!")
+_COOKIE_DAYS = int(st.secrets.get("cookie", {}).get("expiry_days", 30))
+_cookie_mgr  = stx.CookieManager(key="__sa_mgr__")
+
+def _sign(username: str) -> str:
+    return hmac.new(_COOKIE_KEY.encode(), username.encode(), hashlib.sha256).hexdigest()[:24]
+
+def _get_cookie_user():
+    val = _cookie_mgr.get(_COOKIE_NAME)
+    if not val or ":" not in str(val):
+        return None
+    username, sig = str(val).rsplit(":", 1)
+    if hmac.compare_digest(sig, _sign(username)):
+        return username
+    return None
+
+def _set_cookie(username: str):
+    _cookie_mgr.set(_COOKIE_NAME, f"{username}:{_sign(username)}",
+                    expires_at=datetime.now() + timedelta(days=_COOKIE_DAYS))
+
+def _del_cookie():
+    try:
+        _cookie_mgr.delete(_COOKIE_NAME)
+    except Exception:
+        pass
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 TICKER_CURRENCY = {
@@ -94,6 +126,16 @@ def auth_register(username: str, email: str, name: str, password: str, confirm: 
         return False, f"Erreur : {e}"
 
 if not st.session_state.get("authenticated"):
+    # Auto-login via cookie
+    _cookie_user = _get_cookie_user()
+    if _cookie_user:
+        rows = supabase.table("users").select("username,name").eq("username", _cookie_user).execute().data
+        if rows:
+            st.session_state["authenticated"] = True
+            st.session_state["username"]      = rows[0]["username"]
+            st.session_state["name"]          = rows[0]["name"]
+            st.rerun()
+
     st.title("📈 Stock Analyzer")
     tab_login, tab_register = st.tabs(["Se connecter", "Créer un compte"])
 
@@ -104,6 +146,7 @@ if not st.session_state.get("authenticated"):
             if st.form_submit_button("Connexion", type="primary"):
                 ok, uid, uname = auth_login(l_user, l_pass)
                 if ok:
+                    _set_cookie(uid)
                     st.session_state["authenticated"] = True
                     st.session_state["username"]      = uid
                     st.session_state["name"]          = uname
@@ -189,6 +232,16 @@ def save_journal(ticker: str, note: str, target_price, review_date: str):
          "target_price": target_price, "review_date": review_date},
         on_conflict="user_id,ticker"
     ).execute()
+
+def get_transaction_fingerprints() -> set:
+    rows = supabase.table("transactions").select("date,ticker,action,quantite,prix").eq("user_id", UID).execute().data
+    return {f"{r['date']}|{r['ticker']}|{r['action']}|{round(float(r['quantite']),4)}|{round(float(r['prix']),4)}" for r in rows}
+
+def clear_portfolio():
+    supabase.table("portfolio").delete().eq("user_id", UID).execute()
+
+def clear_transactions():
+    supabase.table("transactions").delete().eq("user_id", UID).execute()
 
 def get_tg_config() -> dict:
     rows = supabase.table("telegram_config").select("*").eq("user_id", UID).execute().data
@@ -310,6 +363,38 @@ def scalar(val):
     if hasattr(val, "item"): return float(val.item())
     return float(val)
 
+@st.cache_data(ttl=86400)
+def isin_to_yahoo(isin: str) -> str:
+    """Convertit un code ISIN en ticker Yahoo Finance via OpenFIGI (Bloomberg)."""
+    if not isin or len(isin) != 12 or not isin[:2].isalpha():
+        return isin
+    EXCH_SUFFIX = {
+        "LN": ".L",  "FP": ".PA", "GY": ".DE", "NA": ".AS",
+        "SM": ".MC", "SW": ".SW", "IM": ".MI", "DC": ".CO",
+        "SS": ".ST", "HO": ".HE", "BB": ".BR", "AV": ".VI",
+        "PW": ".WA", "PL": ".LS", "IR": ".IR",
+    }
+    try:
+        payload = json.dumps([{"idType": "ID_ISIN", "idValue": isin}]).encode()
+        req = urllib.request.Request(
+            "https://api.openfigi.com/v3/mapping", data=payload,
+            headers={"Content-Type": "application/json"})
+        items = json.loads(urllib.request.urlopen(req, timeout=8).read())[0].get("data", [])
+        if not items:
+            return isin
+        # Priorité : exchanges US (pas de suffixe)
+        for it in items:
+            if it.get("exchCode") in ("US", "UN", "UW", "UA", "UP"):
+                return it["ticker"]
+        # Exchanges européens connus
+        for it in items:
+            sfx = EXCH_SUFFIX.get(it.get("exchCode", ""))
+            if sfx:
+                return it["ticker"] + sfx
+        return items[0].get("ticker", isin)
+    except Exception:
+        return isin
+
 @st.cache_data(ttl=3600)
 def get_earnings_date(ticker: str) -> str:
     try:
@@ -334,6 +419,7 @@ st.sidebar.title("📈 Stock Analyzer")
 st.sidebar.caption(f"Connecté : **{USER_NAME}**")
 st.sidebar.caption(f"1 € = {eurusd:.4f} $")
 if st.sidebar.button("🚪 Déconnexion"):
+    _del_cookie()
     st.session_state.clear()
     st.rerun()
 st.sidebar.divider()
@@ -851,7 +937,16 @@ elif page == "Mon Portefeuille":
                         df_csv             = df_csv.dropna(subset=["quantite","prix"]).reset_index(drop=True)
 
                         if broker_detected in ("Scalable Capital", "Degiro"):
-                            st.warning("⚠️ La colonne **Ticker** contient les codes ISIN. Remplace-les par les tickers Yahoo Finance (ex: `AAPL`, `MC.PA`, `IGLN.L`) avant d'importer.")
+                            st.warning("⚠️ La colonne **Ticker** contient des codes ISIN.")
+                            if st.button("🔄 Convertir les ISINs automatiquement (OpenFIGI)"):
+                                prog_isin = st.progress(0, "Conversion en cours…")
+                                isins = df_csv["ticker"].tolist()
+                                for idx, isin in enumerate(isins):
+                                    prog_isin.progress((idx+1)/len(isins), isin)
+                                    if isin and len(isin) == 12 and isin[:2].isalpha():
+                                        df_csv.at[idx, "ticker"] = isin_to_yahoo(isin)
+                                prog_isin.empty()
+                                st.success("Conversion terminée — vérifie les tickers avant d'importer.")
 
                         # Éditeur de ticker inline
                         preview = df_csv[["date","nom","ticker","action","quantite","prix","montant"]].copy()
@@ -861,17 +956,25 @@ elif page == "Mon Portefeuille":
                         st.caption(f"{len(edited)} transaction(s) — modifie les tickers si nécessaire puis clique Importer.")
 
                         if st.button("✅ Importer", type="primary"):
-                            portfolio  = get_portfolio()
-                            imported   = 0
-                            skipped    = 0
+                            portfolio     = get_portfolio()
+                            fingerprints  = get_transaction_fingerprints()
+                            imported      = 0
+                            skipped       = 0
+                            duplicates    = 0
                             for _, row in edited.iterrows():
                                 tk = str(row["ticker"]).upper().strip()
                                 if not tk or len(tk) < 2:
                                     skipped += 1; continue
                                 nom = str(row.get("nom", tk))
+                                qty_val  = float(row["quantite"])
+                                prix_val = float(row["prix"])
+                                fp = f"{row['date']}|{tk}|{str(row['action']).lower()}|{round(qty_val,4)}|{round(prix_val,4)}"
+                                if fp in fingerprints:
+                                    duplicates += 1; continue
+                                fingerprints.add(fp)
                                 tx  = {"id": str(uuid.uuid4())[:8], "date": str(row["date"]),
                                        "ticker": tk, "nom": nom, "action": str(row["action"]).lower(),
-                                       "quantite": float(row["quantite"]), "prix": float(row["prix"]),
+                                       "quantite": qty_val, "prix": prix_val,
                                        "montant": float(row["montant"])}
                                 add_transaction(tx)
                                 pos = portfolio.get(tk, {"nom": nom, "quantite": 0.0, "prix_achat": float(row["prix"])})
@@ -887,7 +990,8 @@ elif page == "Mon Portefeuille":
                                     else: upsert_position(tk, nom, new_qty, pos["prix_achat"])
                                 imported += 1
                             msg = f"✅ {imported} transaction(s) importée(s)"
-                            if skipped: msg += f" · {skipped} ignorée(s) (ticker vide)"
+                            if duplicates: msg += f" · {duplicates} doublon(s) ignoré(s)"
+                            if skipped:    msg += f" · {skipped} ignorée(s) (ticker vide)"
                             st.success(msg)
                             st.rerun()
                 except Exception as e:
@@ -1301,3 +1405,28 @@ elif page == "Paramètres":
                     delete_custom_ticker(nm); st.rerun()
         else:
             st.caption("Aucune action ajoutée pour le moment.")
+
+    st.divider()
+    st.markdown("### 🗑️ Zone de danger")
+    with st.expander("Vider le portefeuille / l'historique", expanded=False):
+        st.warning("Ces actions sont **irréversibles**. Toutes les données seront supprimées définitivement.")
+        confirm = st.text_input("Tape **CONFIRMER** pour activer les boutons", key="danger_confirm")
+        confirmed = confirm.strip().upper() == "CONFIRMER"
+
+        d1, d2, d3 = st.columns(3)
+        with d1:
+            if st.button("🗑️ Vider les transactions", disabled=not confirmed, type="secondary"):
+                clear_transactions()
+                st.success("Historique des transactions supprimé.")
+                st.rerun()
+        with d2:
+            if st.button("🗑️ Vider le portefeuille", disabled=not confirmed, type="secondary"):
+                clear_portfolio()
+                st.success("Toutes les positions supprimées.")
+                st.rerun()
+        with d3:
+            if st.button("🗑️ Tout vider", disabled=not confirmed, type="secondary"):
+                clear_transactions()
+                clear_portfolio()
+                st.success("Portefeuille et transactions supprimés.")
+                st.rerun()

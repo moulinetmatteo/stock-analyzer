@@ -808,61 +808,87 @@ elif page == "Mon Portefeuille":
                 st.rerun()
 
         with st.expander("📂 Importer un fichier CSV"):
-            st.caption("Format attendu : colonnes `date`, `ticker`, `action` (achat/vente), `quantite`, `prix` — ou format Degiro détecté automatiquement.")
+            st.caption("Formats supportés : **Scalable Capital**, **Degiro** (FR), ou CSV générique (`date, ticker, action, quantite, prix`).")
             uploaded = st.file_uploader("Choisir un CSV", type="csv", key="csv_upload")
             if uploaded:
                 try:
                     df_csv = pd.read_csv(uploaded, sep=None, engine="python")
-                    cols = [c.lower().strip() for c in df_csv.columns]
+                    cols   = [c.lower().strip() for c in df_csv.columns]
                     df_csv.columns = cols
+                    broker_detected = "Générique"
 
-                    # Détection Degiro (français)
-                    if "quantité" in cols and "cours" in cols and "produit" in cols:
-                        df_csv = df_csv.rename(columns={"date": "date", "quantité": "quantite", "cours": "prix"})
-                        df_csv["action"] = df_csv["quantite"].apply(lambda x: "achat" if float(str(x).replace(",",".")) > 0 else "vente")
-                        df_csv["quantite"] = df_csv["quantite"].apply(lambda x: abs(float(str(x).replace(",","."))))
-                        df_csv["prix"] = df_csv["prix"].apply(lambda x: float(str(x).replace(",",".")))
-                        df_csv["ticker"] = ""
-                        df_csv["nom"] = df_csv.get("produit", "")
-                        st.info("Format Degiro détecté. Renseigne le ticker pour chaque ligne (colonne ticker vide).")
+                    # ── Scalable Capital / neobroker (datetime, category, type, shares, price, symbol)
+                    if {"category", "type", "shares", "price", "symbol", "name"}.issubset(set(cols)):
+                        broker_detected = "Scalable Capital"
+                        df_csv = df_csv[df_csv["category"] == "TRADING"].copy()
+                        df_csv = df_csv[df_csv["type"].isin(["BUY", "SELL"])].copy()
+                        df_csv["action"]   = df_csv["type"].map({"BUY": "achat", "SELL": "vente"})
+                        df_csv["quantite"] = pd.to_numeric(df_csv["shares"], errors="coerce").abs()
+                        df_csv["prix"]     = pd.to_numeric(df_csv["price"],  errors="coerce").abs()
+                        df_csv["nom"]      = df_csv["name"]
+                        df_csv["ticker"]   = df_csv["symbol"]   # ISIN → à corriger
+                        df_csv["date"]     = pd.to_datetime(df_csv["date"]).dt.strftime("%Y-%m-%d")
+
+                    # ── Degiro français (quantité, cours, produit)
+                    elif {"quantité", "cours", "produit"}.issubset(set(cols)):
+                        broker_detected = "Degiro"
+                        df_csv["action"]   = df_csv["quantité"].apply(lambda x: "achat" if float(str(x).replace(",",".")) > 0 else "vente")
+                        df_csv["quantite"] = df_csv["quantité"].apply(lambda x: abs(float(str(x).replace(",","."))))
+                        df_csv["prix"]     = df_csv["cours"].apply(lambda x: float(str(x).replace(",",".")))
+                        df_csv["nom"]      = df_csv["produit"]
+                        df_csv["ticker"]   = ""
+
+                    st.success(f"Format détecté : **{broker_detected}**")
 
                     required = {"date", "ticker", "action", "quantite", "prix"}
                     missing  = required - set(df_csv.columns)
                     if missing:
                         st.error(f"Colonnes manquantes : {', '.join(missing)}")
                     else:
-                        df_csv["date"]     = pd.to_datetime(df_csv["date"], dayfirst=True).dt.strftime("%Y-%m-%d")
                         df_csv["quantite"] = pd.to_numeric(df_csv["quantite"], errors="coerce")
                         df_csv["prix"]     = pd.to_numeric(df_csv["prix"],     errors="coerce")
                         df_csv["montant"]  = (df_csv["quantite"] * df_csv["prix"]).round(2)
-                        df_csv["action"]   = df_csv["action"].str.lower().str.strip()
-                        df_csv             = df_csv.dropna(subset=["quantite","prix"])
-                        st.dataframe(df_csv[["date","ticker","action","quantite","prix","montant"]].head(20),
-                                     use_container_width=True, hide_index=True)
-                        st.caption(f"{len(df_csv)} transaction(s) trouvée(s)")
-                        if st.button("✅ Importer toutes les transactions"):
-                            portfolio = get_portfolio()
-                            for _, row in df_csv.iterrows():
+                        df_csv             = df_csv.dropna(subset=["quantite","prix"]).reset_index(drop=True)
+
+                        if broker_detected in ("Scalable Capital", "Degiro"):
+                            st.warning("⚠️ La colonne **Ticker** contient les codes ISIN. Remplace-les par les tickers Yahoo Finance (ex: `AAPL`, `MC.PA`, `IGLN.L`) avant d'importer.")
+
+                        # Éditeur de ticker inline
+                        preview = df_csv[["date","nom","ticker","action","quantite","prix","montant"]].copy()
+                        edited  = st.data_editor(preview, use_container_width=True, hide_index=True,
+                                                 column_config={"ticker": st.column_config.TextColumn("Ticker ✏️", help="Modifie l'ISIN en ticker Yahoo Finance")},
+                                                 key="csv_editor")
+                        st.caption(f"{len(edited)} transaction(s) — modifie les tickers si nécessaire puis clique Importer.")
+
+                        if st.button("✅ Importer", type="primary"):
+                            portfolio  = get_portfolio()
+                            imported   = 0
+                            skipped    = 0
+                            for _, row in edited.iterrows():
                                 tk = str(row["ticker"]).upper().strip()
-                                if not tk: continue
+                                if not tk or len(tk) < 2:
+                                    skipped += 1; continue
                                 nom = str(row.get("nom", tk))
-                                tx  = {"id": str(uuid.uuid4())[:8], "date": row["date"],
-                                       "ticker": tk, "nom": nom, "action": row["action"],
+                                tx  = {"id": str(uuid.uuid4())[:8], "date": str(row["date"]),
+                                       "ticker": tk, "nom": nom, "action": str(row["action"]).lower(),
                                        "quantite": float(row["quantite"]), "prix": float(row["prix"]),
                                        "montant": float(row["montant"])}
                                 add_transaction(tx)
-                                pos = portfolio.get(tk, {"nom": nom, "quantite": 0, "prix_achat": float(row["prix"])})
-                                if row["action"] == "achat":
+                                pos = portfolio.get(tk, {"nom": nom, "quantite": 0.0, "prix_achat": float(row["prix"])})
+                                if tx["action"] == "achat":
                                     old_qty, old_p = pos["quantite"], pos["prix_achat"]
-                                    new_qty = old_qty + float(row["quantite"])
-                                    new_p   = (old_qty * old_p + float(row["quantite"]) * float(row["prix"])) / new_qty
+                                    new_qty = old_qty + tx["quantite"]
+                                    new_p   = (old_qty * old_p + tx["quantite"] * tx["prix"]) / new_qty
                                     upsert_position(tk, nom, new_qty, new_p)
                                     portfolio[tk] = {"nom": nom, "quantite": new_qty, "prix_achat": new_p}
                                 else:
-                                    new_qty = max(0, pos["quantite"] - float(row["quantite"]))
+                                    new_qty = max(0.0, pos["quantite"] - tx["quantite"])
                                     if new_qty == 0: delete_position(tk)
                                     else: upsert_position(tk, nom, new_qty, pos["prix_achat"])
-                            st.success(f"{len(df_csv)} transaction(s) importée(s) !")
+                                imported += 1
+                            msg = f"✅ {imported} transaction(s) importée(s)"
+                            if skipped: msg += f" · {skipped} ignorée(s) (ticker vide)"
+                            st.success(msg)
                             st.rerun()
                 except Exception as e:
                     st.error(f"Erreur lecture CSV : {e}")

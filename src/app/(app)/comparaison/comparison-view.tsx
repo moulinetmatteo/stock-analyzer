@@ -1,0 +1,234 @@
+"use client";
+
+import { useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  CartesianGrid, Line, LineChart, ReferenceLine,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
+import { X } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import { RsiPill } from "@/components/signal-badge";
+import { fmtEur, fmtPct, fmtNum, pnlColor, cn } from "@/lib/utils";
+
+export type CompareSeries = {
+  ticker: string;
+  nom: string;
+  points: { date: string; norm: number; rsi: number }[];
+  priceEur: number;
+  perf: number;
+  rsi: number | null;
+};
+
+const COLORS = [
+  "var(--chart-1)", "var(--chart-2)", "var(--chart-3)",
+  "var(--chart-4)", "var(--chart-5)",
+];
+
+function fmtDate(d: string) {
+  return new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+}
+
+export function ComparisonView({
+  universe,
+  selected,
+  series,
+}: {
+  universe: { nom: string; ticker: string }[];
+  selected: string[];
+  series: CompareSeries[];
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+
+  function setTickers(next: string[]) {
+    const p = new URLSearchParams(params.toString());
+    if (next.length) p.set("tickers", next.join(","));
+    else p.delete("tickers");
+    router.push(`${pathname}?${p.toString()}`);
+  }
+
+  /** Fusion des séries sur l'axe des dates pour un seul LineChart. */
+  const merged = useMemo(() => {
+    const byDate = new Map<string, Record<string, number | string>>();
+    for (const s of series) {
+      for (const p of s.points) {
+        const row = byDate.get(p.date) ?? { date: p.date };
+        row[s.ticker] = p.norm;
+        byDate.set(p.date, row);
+      }
+    }
+    return [...byDate.values()].sort((a, b) =>
+      String(a.date).localeCompare(String(b.date)),
+    );
+  }, [series]);
+
+  const available = universe.filter((u) => !selected.includes(u.ticker));
+  const ranked = [...series].sort((a, b) => b.perf - a.perf);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2">
+        {selected.map((t, i) => {
+          const s = series.find((x) => x.ticker === t);
+          return (
+            <span
+              key={t}
+              className="inline-flex items-center gap-2 rounded-full border py-1 pr-1 pl-3 text-sm"
+            >
+              <span
+                className="size-2 rounded-full"
+                style={{ backgroundColor: COLORS[i % COLORS.length] }}
+              />
+              {s?.nom ?? t}
+              <button
+                onClick={() => setTickers(selected.filter((x) => x !== t))}
+                className="rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                aria-label={`Retirer ${s?.nom ?? t}`}
+              >
+                <X className="size-3.5" />
+              </button>
+            </span>
+          );
+        })}
+
+        {selected.length < 5 && (
+          <Select value="" onValueChange={(v) => setTickers([...selected, v])}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Ajouter une action…" />
+            </SelectTrigger>
+            <SelectContent className="max-h-80">
+              {available.map((u) => (
+                <SelectItem key={u.ticker} value={u.ticker}>
+                  {u.nom}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
+      {series.length < 2 ? (
+        <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+          Sélectionne au moins deux actions pour lancer la comparaison.
+        </p>
+      ) : (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Performance relative (base 100)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={340}>
+                <LineChart data={merged} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={fmtDate}
+                    tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                    minTickGap={40}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                    width={48}
+                    axisLine={false}
+                    tickLine={false}
+                    domain={["auto", "auto"]}
+                  />
+                  <ReferenceLine y={100} stroke="var(--muted-foreground)" strokeDasharray="3 3" />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null;
+                      return (
+                        <div className="rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
+                          <p className="mb-1 font-medium">{fmtDate(String(label))}</p>
+                          <ul className="space-y-0.5 tabular">
+                            {payload.map((p) => {
+                              const key = String(p.dataKey);
+                              const s = series.find((x) => x.ticker === key);
+                              const v = Number(p.value);
+                              return (
+                                <li key={key} className="flex justify-between gap-4">
+                                  <span style={{ color: p.color }}>{s?.nom ?? key}</span>
+                                  <span className={pnlColor(v - 100)}>
+                                    {fmtNum(v, 1)}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      );
+                    }}
+                  />
+                  {series.map((s, i) => (
+                    <Line
+                      key={s.ticker}
+                      dataKey={s.ticker}
+                      dot={false}
+                      strokeWidth={2}
+                      stroke={COLORS[i % COLORS.length]}
+                      isAnimationActive={false}
+                      connectNulls
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Récapitulatif</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Action</TableHead>
+                      <TableHead>Ticker</TableHead>
+                      <TableHead className="text-right">Prix</TableHead>
+                      <TableHead className="text-right">Performance</TableHead>
+                      <TableHead className="text-right">RSI</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {ranked.map((s) => (
+                      <TableRow key={s.ticker}>
+                        <TableCell className="font-medium">{s.nom}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {s.ticker}
+                        </TableCell>
+                        <TableCell className="text-right tabular">
+                          {fmtEur(s.priceEur)}
+                        </TableCell>
+                        <TableCell
+                          className={cn("text-right tabular font-medium", pnlColor(s.perf))}
+                        >
+                          {fmtPct(s.perf)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <RsiPill value={s.rsi} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}

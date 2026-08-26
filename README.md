@@ -1,36 +1,86 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Stock Analyzer — Next.js
 
-## Getting Started
+Analyse technique, suivi de portefeuille et alertes boursières. Réécriture de la
+version Streamlit en Next.js 16 (App Router) + shadcn/ui, avec le même backend
+Supabase et les mêmes comptes utilisateurs.
 
-First, run the development server:
+## Ce que fait l'app
+
+| Page | Contenu |
+|---|---|
+| **Dashboard** | Valorisation du portefeuille, top hausses/baisses, heatmap sectorielle, opportunités RSI, alertes déclenchées, calendrier des résultats |
+| **Screener** | Tous les titres suivis avec RSI, stochastique, croisement EMA et signal de consensus — triable et filtrable |
+| **Analyse détaillée** | Chandeliers + EMA 20/50/200, Bollinger, volume, RSI, MACD, fondamentaux et actualités |
+| **Comparaison** | Jusqu'à 5 titres en performance relative base 100 |
+| **Portefeuille** | Positions et PRU, historique, import CSV courtier, métriques de risque (volatilité, Sharpe, drawdown, alpha vs S&P 500), journal d'investissement |
+| **Backtesting** | Stratégies RSI / MACD / combinée contre le buy-and-hold |
+| **Alertes** | Seuils d'achat et de vente par titre |
+| **Paramètres** | Watchlist personnalisée, notifications Telegram, suppression des données |
+
+## Stack
+
+- **Next.js 16** (App Router, Server Components, Server Actions)
+- **shadcn/ui** + Tailwind CSS v4
+- **Recharts** pour les graphiques
+- **yahoo-finance2** pour les données de marché
+- **Supabase** (PostgreSQL) pour les données utilisateur
+- Indicateurs techniques calculés maison — portage vérifié des formules pandas
+  de la version Streamlit (RSI, MACD, Bollinger, stochastique donnent des
+  valeurs identiques à la décimale près)
+
+## Démarrer
 
 ```bash
+npm install
+cp .env.example .env.local   # puis remplis les trois variables
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Variables d'environnement
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Où la trouver |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API → Project URL |
+| `SUPABASE_SERVICE_KEY` | Supabase → Project Settings → API → `service_role` |
+| `SESSION_SECRET` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+La clé `service_role` contourne RLS : elle ne doit jamais être exposée côté
+client. Ici elle n'est lue que dans des modules marqués `server-only`, et
+l'isolation entre comptes passe par un filtre `user_id` sur chaque requête.
 
-## Learn More
+### Base de données
 
-To learn more about Next.js, take a look at the following resources:
+Le schéma est identique à celui de la version Streamlit (`schema.sql` du dépôt
+`stock-analyzer`) : tables `users`, `portfolio`, `transactions`, `alerts`,
+`watchlist_custom`, `journal`, `telegram_config`, `rsi_state`. Les comptes et
+données existants fonctionnent tels quels — `user_id` reste le nom
+d'utilisateur, et les mots de passe bcrypt sont vérifiés à l'identique.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Authentification
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Session par cookie `httpOnly` signé HMAC-SHA256, valable 30 jours. Le cookie
+n'est pas lisible en JavaScript, contrairement à la version Streamlit où le
+jeton transitait par l'URL.
 
-## Deploy on Vercel
+## Import CSV
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Trois formats reconnus automatiquement :
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Scalable Capital** — filtre les lignes `TRADING`, lit `BUY`/`SELL`
+- **Degiro** (export français) — déduit le sens depuis le signe de la quantité
+- **Générique** — colonnes `date, ticker, action, quantite, prix`
+
+Les codes ISIN sont convertis en tickers Yahoo via l'API OpenFIGI, et chaque
+ticker reste éditable avant l'import. Les transactions déjà enregistrées sont
+détectées par empreinte (date + ticker + sens + quantité + prix) et ignorées,
+donc réimporter le même relevé ne crée pas de doublons.
+
+## Déploiement
+
+Vercel : importer le dépôt, renseigner les trois variables d'environnement,
+déployer. Aucune configuration supplémentaire.
+
+---
+
+> Outil d'aide à la décision. Les signaux techniques ne sont pas des conseils
+> d'investissement.

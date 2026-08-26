@@ -9,7 +9,7 @@ from datetime import datetime, date
 import subprocess
 import urllib.request
 import urllib.parse
-import streamlit_authenticator as stauth
+import bcrypt
 from supabase import create_client
 
 st.set_page_config(page_title="Stock Analyzer", layout="wide", page_icon="📈")
@@ -61,19 +61,69 @@ supabase = init_supabase()
 
 
 # ── Authentification ──────────────────────────────────────────────────────────
-authenticator = stauth.Authenticate(
-    dict(st.secrets["credentials"]),
-    st.secrets["cookie"]["name"],
-    st.secrets["cookie"]["key"],
-    int(st.secrets["cookie"]["expiry_days"]),
-)
-authenticator.login()
+def auth_login(username: str, password: str) -> tuple:
+    try:
+        rows = supabase.table("users").select("*").eq("username", username.lower().strip()).execute().data
+        if not rows:
+            return False, "", ""
+        u = rows[0]
+        if bcrypt.checkpw(password.encode(), u["password_hash"].encode()):
+            return True, u["username"], u["name"]
+    except Exception:
+        pass
+    return False, "", ""
 
-if not st.session_state.get("authentication_status"):
-    if st.session_state.get("authentication_status") is False:
-        st.error("❌ Nom d'utilisateur ou mot de passe incorrect")
-    else:
-        st.info("👋 Connectez-vous pour accéder à votre Stock Analyzer")
+def auth_register(username: str, email: str, name: str, password: str, confirm: str) -> tuple:
+    username = username.lower().strip()
+    if not username or not password:
+        return False, "Remplis tous les champs obligatoires."
+    if password != confirm:
+        return False, "Les mots de passe ne correspondent pas."
+    if len(password) < 6:
+        return False, "Mot de passe trop court (6 caractères min)."
+    try:
+        if supabase.table("users").select("username").eq("username", username).execute().data:
+            return False, "Ce nom d'utilisateur est déjà pris."
+        pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        supabase.table("users").insert({
+            "username": username, "email": email.strip(),
+            "name": name.strip() or username, "password_hash": pw_hash,
+        }).execute()
+        return True, "Compte créé ! Tu peux maintenant te connecter."
+    except Exception as e:
+        return False, f"Erreur : {e}"
+
+if not st.session_state.get("authenticated"):
+    st.title("📈 Stock Analyzer")
+    tab_login, tab_register = st.tabs(["Se connecter", "Créer un compte"])
+
+    with tab_login:
+        with st.form("login_form"):
+            l_user = st.text_input("Nom d'utilisateur")
+            l_pass = st.text_input("Mot de passe", type="password")
+            if st.form_submit_button("Connexion", type="primary"):
+                ok, uid, uname = auth_login(l_user, l_pass)
+                if ok:
+                    st.session_state["authenticated"] = True
+                    st.session_state["username"]      = uid
+                    st.session_state["name"]          = uname
+                    st.rerun()
+                else:
+                    st.error("Identifiants incorrects.")
+
+    with tab_register:
+        with st.form("register_form"):
+            r_user    = st.text_input("Nom d'utilisateur *")
+            r_name    = st.text_input("Prénom")
+            r_email   = st.text_input("Email")
+            r_pass    = st.text_input("Mot de passe * (6 caractères min)", type="password")
+            r_confirm = st.text_input("Confirmer le mot de passe *", type="password")
+            if st.form_submit_button("Créer mon compte", type="primary"):
+                ok, msg = auth_register(r_user, r_email, r_name, r_pass, r_confirm)
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
     st.stop()
 
 UID       = st.session_state["username"]
@@ -272,7 +322,9 @@ if "tg_config" not in st.session_state:
 st.sidebar.title("📈 Stock Analyzer")
 st.sidebar.caption(f"Connecté : **{USER_NAME}**")
 st.sidebar.caption(f"1 € = {eurusd:.4f} $")
-authenticator.logout("🚪 Déconnexion", "sidebar")
+if st.sidebar.button("🚪 Déconnexion"):
+    st.session_state.clear()
+    st.rerun()
 st.sidebar.divider()
 
 page = st.sidebar.radio("Navigation", [

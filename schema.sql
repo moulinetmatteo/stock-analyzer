@@ -1,5 +1,13 @@
 -- Coller dans Supabase → SQL Editor → Run
 
+create table if not exists users (
+  username      text primary key,
+  email         text,
+  name          text,
+  password_hash text not null,
+  created_at    timestamptz default now()
+);
+
 create table if not exists portfolio (
   id          uuid default gen_random_uuid() primary key,
   user_id     text not null,

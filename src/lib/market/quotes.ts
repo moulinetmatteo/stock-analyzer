@@ -308,28 +308,63 @@ const EXCH_SUFFIX: Record<string, string> = {
   PW: ".WA", PL: ".LS", IR: ".IR",
 };
 
+/** Le symbole existe-t-il vraiment côté Yahoo ? */
+async function tickerResolves(symbol: string): Promise<boolean> {
+  try {
+    const q = await yahooFinance.quote(symbol);
+    return !!q?.regularMarketPrice;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * ISIN → ticker Yahoo.
+ *
+ * On interroge d'abord la recherche Yahoo, qui indexe les ISIN et renvoie donc
+ * des symboles que Yahoo sait forcément coter. OpenFIGI ne sert que de repli :
+ * il renvoie des tickers Bloomberg qui n'ont pas toujours d'équivalent Yahoo.
+ * Chaque candidat est vérifié avant d'être retenu.
+ */
 export async function isinToYahoo(isin: string): Promise<string> {
-  if (!isin || isin.length !== 12 || !/^[A-Za-z]{2}/.test(isin)) return isin;
+  const code = isin?.trim().toUpperCase();
+  if (!code || code.length !== 12 || !/^[A-Z]{2}/.test(code)) return isin;
+
+  const candidates: string[] = [];
+
+  // 1. Recherche Yahoo — les symboles qui reprennent l'ISIN (cotations
+  //    secondaires type .SG) passent en dernier, ils sont peu liquides.
+  try {
+    const res = await yahooFinance.search(code, { quotesCount: 6, newsCount: 0 });
+    const symbols = (res.quotes ?? [])
+      .map((q) => ("symbol" in q ? q.symbol : undefined))
+      .filter((s): s is string => !!s);
+    candidates.push(
+      ...symbols.filter((s) => !s.startsWith(code)),
+      ...symbols.filter((s) => s.startsWith(code)),
+    );
+  } catch { /* on tente OpenFIGI */ }
+
+  // 2. Repli OpenFIGI
   try {
     const res = await fetch("https://api.openfigi.com/v3/mapping", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify([{ idType: "ID_ISIN", idValue: isin }]),
+      body: JSON.stringify([{ idType: "ID_ISIN", idValue: code }]),
     });
-    const json = await res.json();
-    const items = json?.[0]?.data ?? [];
-    if (!items.length) return isin;
+    const items = (await res.json())?.[0]?.data ?? [];
+    for (const it of items as { ticker?: string; exchCode?: string }[]) {
+      if (!it.ticker) continue;
+      if (["US", "UN", "UW", "UA", "UP"].includes(it.exchCode ?? "")) {
+        candidates.push(it.ticker);
+      }
+      const sfx = EXCH_SUFFIX[it.exchCode ?? ""];
+      if (sfx) candidates.push(it.ticker + sfx);
+    }
+  } catch { /* on retombera sur l'ISIN */ }
 
-    const us = items.find((it: { exchCode?: string }) =>
-      ["US", "UN", "UW", "UA", "UP"].includes(it.exchCode ?? ""),
-    );
-    if (us) return us.ticker;
-
-    const eu = items.find((it: { exchCode?: string }) => EXCH_SUFFIX[it.exchCode ?? ""]);
-    if (eu) return eu.ticker + EXCH_SUFFIX[eu.exchCode];
-
-    return items[0].ticker ?? isin;
-  } catch {
-    return isin;
+  for (const c of [...new Set(candidates)]) {
+    if (await tickerResolves(c)) return c;
   }
+  return isin;
 }

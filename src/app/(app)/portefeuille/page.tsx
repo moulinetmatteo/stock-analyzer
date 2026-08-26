@@ -3,6 +3,7 @@ import {
   getPortfolio, getTransactions, getJournal, getCustomWatchlist,
 } from "@/lib/data";
 import { getEurUsd, getSnapshots, getSeries } from "@/lib/market/quotes";
+import { buildPortfolioCurve } from "@/lib/market/portfolio-curve";
 import { WATCHLIST } from "@/lib/market/constants";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PositionsTab } from "./positions-tab";
@@ -49,22 +50,28 @@ export default async function PortefeuillePage() {
     };
   });
 
-  const totalValue = rows.reduce((a, r) => a + (r.value ?? 0), 0);
-  const totalInvest = rows.reduce((a, r) => a + r.invest, 0);
+  // Les lignes sans cours (ticker introuvable chez Yahoo) sont exclues des deux
+  // totaux : les compter côté investi seulement afficherait un faux -100 %.
+  const priced = rows.filter((r) => r.value !== null);
+  const totalValue = priced.reduce((a, r) => a + r.value!, 0);
+  const totalInvest = priced.reduce((a, r) => a + r.invest, 0);
+  const unpriced = rows.filter((r) => r.value === null).map((r) => r.ticker);
 
   // ── Courbe de valorisation sur 1 an ─────────────────────────────────────────
-  const timeline = new Map<string, number>();
-  for (const p of portfolio) {
-    const s = await getSeries(p.ticker, "1y");
-    if (!s) continue;
-    const fx = s.currency === "EUR" ? 1 : 1 / eurusd;
-    for (const c of s.candles) {
-      timeline.set(c.date, (timeline.get(c.date) ?? 0) + c.close * fx * p.quantite);
-    }
-  }
-  const curve: PortfolioPoint[] = [...timeline.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, value]) => ({ date, value }));
+  const histories = await Promise.all(
+    portfolio.map(async (p) => {
+      const s = await getSeries(p.ticker, "1y");
+      if (!s) return null;
+      const fx = s.currency === "EUR" ? 1 : 1 / eurusd;
+      return {
+        quantite: p.quantite,
+        prices: new Map(s.candles.map((c) => [c.date, c.close * fx])),
+      };
+    }),
+  );
+  const curve: PortfolioPoint[] = buildPortfolioCurve(
+    histories.filter((h): h is NonNullable<typeof h> => h !== null),
+  );
 
   const benchmark = await getSeries("SPY", "1y");
   let spyPerf: number | null = null;
@@ -97,6 +104,7 @@ export default async function PortefeuillePage() {
             rows={rows}
             totalValue={totalValue}
             totalInvest={totalInvest}
+            unpriced={unpriced}
             universe={universe}
           />
         </TabsContent>

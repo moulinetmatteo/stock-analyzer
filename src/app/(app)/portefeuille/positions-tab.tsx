@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,11 +33,13 @@ export function PositionsTab({
   rows,
   totalValue,
   totalInvest,
+  unpriced,
   universe,
 }: {
   rows: PositionRow[];
   totalValue: number;
   totalInvest: number;
+  unpriced: string[];
   universe: { nom: string; ticker: string }[];
 }) {
   const [open, setOpen] = useState(rows.length === 0);
@@ -65,8 +67,35 @@ export function PositionsTab({
           delta={fmtPct(pnlPct)}
           deltaTone={pnl > 0 ? "gain" : pnl < 0 ? "loss" : "muted"}
         />
-        <StatCard label="Positions" value={String(rows.length)} />
+        <StatCard
+          label="Positions"
+          value={String(rows.length)}
+          hint={unpriced.length ? `dont ${unpriced.length} sans cours` : undefined}
+        />
       </StatGrid>
+
+      {unpriced.length > 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-[var(--chart-5)]/40 bg-[var(--chart-5)]/8 px-4 py-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--chart-5)]" />
+          <div className="text-sm">
+            <p className="font-medium">
+              {unpriced.length} position{unpriced.length > 1 ? "s" : ""} sans cours —
+              exclue{unpriced.length > 1 ? "s" : ""} des totaux ci-dessus.
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              Yahoo Finance ne reconnaît pas{" "}
+              {unpriced.map((t, i) => (
+                <span key={t}>
+                  {i > 0 && ", "}
+                  <code className="font-mono text-xs">{t}</code>
+                </span>
+              ))}
+              . Ce sont des codes ISIN : remplace-les par le ticker Yahoo
+              correspondant via « Ajouter / modifier une position ».
+            </p>
+          </div>
+        </div>
+      )}
 
       <div>
         <Button variant="outline" size="sm" onClick={() => setOpen((o) => !o)}>

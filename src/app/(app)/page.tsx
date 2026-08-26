@@ -26,11 +26,14 @@ export default async function DashboardPage() {
   const snaps = await getSnapshots(allTickers, "3mo", eurusd);
 
   // ── Valorisation du portefeuille ────────────────────────────────────────────
+  // Seules les lignes effectivement valorisées entrent dans les totaux, sinon
+  // un ticker introuvable ferait apparaître une perte de 100 %.
   let totalVal = 0;
   let totalInvest = 0;
+  let unpriced = 0;
   for (const p of portfolio) {
     const s = snaps.get(p.ticker);
-    if (!s) continue;
+    if (!s) { unpriced++; continue; }
     totalVal += p.quantite * s.priceEur;
     totalInvest += p.quantite * p.prix_achat;
   }
@@ -107,7 +110,11 @@ export default async function DashboardPage() {
             delta={fmtPct(pnlPct)}
             deltaTone={pnl > 0 ? "gain" : pnl < 0 ? "loss" : "muted"}
           />
-          <StatCard label="Positions" value={String(portfolio.length)} />
+          <StatCard
+            label="Positions"
+            value={String(portfolio.length)}
+            hint={unpriced ? `dont ${unpriced} sans cours` : undefined}
+          />
         </StatGrid>
       )}
 

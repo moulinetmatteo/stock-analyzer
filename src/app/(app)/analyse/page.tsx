@@ -11,6 +11,7 @@ import { StatCard, PageHeader, SectionTitle } from "@/components/stat-card";
 import { PeriodPicker } from "@/components/period-picker";
 import { TickerPicker } from "@/components/ticker-picker";
 import { AnalysisCharts } from "./analysis-charts";
+import { AiAnalysis } from "@/components/ai-analysis";
 import { fmtEur, fmtPct, fmtCap, fmtNum } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
 
@@ -120,6 +121,8 @@ export default async function AnalysePage({
       </div>
 
       <AnalysisCharts points={points} />
+
+      <AiAnalysis ticker={ticker} period={period} label={label} />
 
       {fund && (
         <section className="surface-card p-5">

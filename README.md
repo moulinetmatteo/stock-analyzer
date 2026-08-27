@@ -10,7 +10,7 @@ Supabase et les mêmes comptes utilisateurs.
 |---|---|
 | **Dashboard** | Valorisation du portefeuille, top hausses/baisses, heatmap sectorielle, opportunités RSI, alertes déclenchées, calendrier des résultats |
 | **Screener** | Tous les titres suivis avec RSI, stochastique, croisement EMA et signal de consensus — triable et filtrable |
-| **Analyse détaillée** | Chandeliers + EMA 20/50/200, Bollinger, volume, RSI, MACD, fondamentaux et actualités |
+| **Analyse détaillée** | Chandeliers + EMA 20/50/200, Bollinger, volume, RSI, MACD, fondamentaux, actualités, et une lecture des indicateurs par Claude |
 | **Comparaison** | Jusqu'à 5 titres en performance relative base 100 |
 | **Portefeuille** | Positions et PRU, historique, import CSV courtier, métriques de risque (volatilité, Sharpe, drawdown, alpha vs S&P 500), journal d'investissement |
 | **Backtesting** | Stratégies RSI / MACD / combinée contre le buy-and-hold |
@@ -38,11 +38,15 @@ npm run dev
 
 ### Variables d'environnement
 
-| Variable | Où la trouver |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API → Project URL |
-| `SUPABASE_SERVICE_KEY` | Supabase → Project Settings → API → `service_role` |
-| `SESSION_SECRET` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` |
+| Variable | Où la trouver | |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API → Project URL | requise |
+| `SUPABASE_SERVICE_KEY` | Supabase → Project Settings → API → `service_role` | requise |
+| `SESSION_SECRET` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` | requise |
+| `ANTHROPIC_API_KEY` | console.anthropic.com | facultative |
+
+Sans `ANTHROPIC_API_KEY`, tout fonctionne : seul le bouton d'analyse IA indique
+que la fonctionnalité n'est pas configurée.
 
 La clé `service_role` contourne RLS : elle ne doit jamais être exposée côté
 client. Ici elle n'est lue que dans des modules marqués `server-only`, et
@@ -55,6 +59,21 @@ Le schéma est identique à celui de la version Streamlit (`schema.sql` du dép�
 `watchlist_custom`, `journal`, `telegram_config`, `rsi_state`. Les comptes et
 données existants fonctionnent tels quels — `user_id` reste le nom
 d'utilisateur, et les mots de passe bcrypt sont vérifiés à l'identique.
+
+## Analyse IA
+
+Sur la page d'analyse, un bouton demande à Claude de lire les indicateurs du
+titre affiché. Le modèle ne reçoit que des valeurs déjà calculées par
+l'application — cours, RSI, MACD, Bollinger, moyennes mobiles, fondamentaux,
+titres de presse, et la position détenue le cas échéant. Il ne calcule rien
+lui-même, ce qui rend sa lecture vérifiable ligne à ligne contre la page.
+
+Le texte arrive en flux. Le prompt lui interdit d'émettre une recommandation
+d'achat ou de vente et de donner un objectif de cours : il décrit ce que disent
+les indicateurs, notamment là où ils divergent.
+
+Chaque analyse est un appel facturé (`claude-opus-5`, de l'ordre de quelques
+centimes) — elle ne part que sur clic, jamais au chargement de la page.
 
 ## Authentification
 

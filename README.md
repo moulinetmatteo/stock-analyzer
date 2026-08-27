@@ -44,6 +44,7 @@ npm run dev
 | `SUPABASE_SERVICE_KEY` | Supabase → Project Settings → API → `service_role` | requise |
 | `SESSION_SECRET` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` | requise |
 | `ANTHROPIC_API_KEY` | console.anthropic.com | facultative |
+| `CRON_SECRET` | valeur aléatoire, partagée avec GitHub Actions | pour les alertes |
 
 Sans `ANTHROPIC_API_KEY`, tout fonctionne : seul le bouton d'analyse IA indique
 que la fonctionnalité n'est pas configurée.
@@ -59,6 +60,31 @@ Le schéma est identique à celui de la version Streamlit (`schema.sql` du dép�
 `watchlist_custom`, `journal`, `telegram_config`, `rsi_state`. Les comptes et
 données existants fonctionnent tels quels — `user_id` reste le nom
 d'utilisateur, et les mots de passe bcrypt sont vérifiés à l'identique.
+
+## Alertes Telegram
+
+Un workflow GitHub Actions appelle `/api/cron/alerts`, protégée par `CRON_SECRET` :
+toutes les 30 minutes de 9h à 18h en semaine pour les seuils de prix et les
+bascules de zone RSI, et une fois à 9h30 pour le scan des titres en survente.
+
+La logique vit dans l'application, pas dans le workflow — les indicateurs sont
+donc calculés au même endroit que ceux affichés à l'écran, et le cron n'a besoin
+d'aucun accès à la base.
+
+Deux règles évitent le harcèlement : une alerte de prix ne notifie qu'une fois
+par jour tant que le seuil reste franchi, et une zone RSI n'est signalée qu'à
+l'entrée, pas tant qu'on y reste.
+
+Ajouter `?dry=1` simule le passage : la réponse liste les messages qui auraient
+été envoyés, sans rien envoyer ni marquer comme notifié.
+
+```bash
+curl -H "x-cron-secret: $CRON_SECRET" \
+  "https://mon-app.vercel.app/api/cron/alerts?job=alerts&dry=1"
+```
+
+À configurer une fois : `sql/alert-dedup.sql` dans Supabase, `CRON_SECRET` dans
+Vercel, puis `APP_URL` et `CRON_SECRET` dans les secrets GitHub du dépôt.
 
 ## Analyse IA
 

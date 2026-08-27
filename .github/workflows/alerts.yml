@@ -1,0 +1,53 @@
+name: Alertes et scan
+
+# La logique vit dans l'application : ce workflow ne fait qu'appeler une route
+# protégée. Les indicateurs ne sont donc calculés qu'à un seul endroit, et le
+# cron n'a besoin d'aucun accès à la base.
+
+on:
+  schedule:
+    # Seuils de prix et bascules de zone RSI : toutes les 30 min,
+    # 9h-18h Paris (7h-16h UTC), du lundi au vendredi.
+    - cron: "*/30 7-16 * * 1-5"
+    # Scan des titres en survente : une fois, à 9h30 Paris.
+    - cron: "30 7 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Tâche à lancer"
+        type: choice
+        options: [alerts, scan]
+        default: alerts
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Déterminer la tâche
+        id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "job=${{ inputs.job }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "30 7 * * 1-5" ]; then
+            echo "job=scan" >> "$GITHUB_OUTPUT"
+          else
+            echo "job=alerts" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Appeler la route
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          job="${{ steps.pick.outputs.job }}"
+          echo "Tâche : $job"
+          code=$(curl -sS -o /tmp/out.json -w "%{http_code}" \
+            --max-time 300 \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$APP_URL/api/cron/alerts?job=$job")
+          cat /tmp/out.json; echo
+          # 207 signale des erreurs par utilisateur sans faire échouer le lot.
+          if [ "$code" != "200" ] && [ "$code" != "207" ]; then
+            echo "::error::La route a répondu $code"
+            exit 1
+          fi

@@ -263,3 +263,61 @@ export async function saveAnalysis(
     { onConflict: "user_id,ticker,periode" },
   );
 }
+
+// ── Destinataires et état des alertes (utilisés par le cron) ─────────────────
+
+export type TelegramTarget = { user_id: string; token: string; chat_id: string };
+
+/** Tous les comptes ayant configuré Telegram — le cron tourne sans session. */
+export async function getAllTelegramTargets(): Promise<TelegramTarget[]> {
+  const { data } = await supabase
+    .from("telegram_config")
+    .select("user_id,token,chat_id");
+  return (data ?? []).filter(
+    (r): r is TelegramTarget => Boolean(r.token) && Boolean(r.chat_id),
+  );
+}
+
+export type RsiZone = "buy" | "sell" | "neutral";
+
+export type RsiState = { ticker: string; zone: RsiZone; alerted_date: string };
+
+export async function getRsiState(uid: string): Promise<Map<string, RsiState>> {
+  const { data } = await supabase
+    .from("rsi_state")
+    .select("ticker,zone,alerted_date")
+    .eq("user_id", uid);
+  return new Map((data ?? []).map((r) => [r.ticker, r as RsiState]));
+}
+
+export async function saveRsiStates(uid: string, states: RsiState[]) {
+  if (!states.length) return;
+  await supabase.from("rsi_state").upsert(
+    states.map((s) => ({ user_id: uid, ...s })),
+    { onConflict: "user_id,ticker" },
+  );
+}
+
+/**
+ * Date du dernier envoi par alerte. Sans cette trace, une alerte dont le seuil
+ * reste franchi repart à chaque passage du cron — toutes les 30 minutes.
+ */
+export async function getAlertNotifiedDates(uid: string): Promise<Map<string, string>> {
+  const { data } = await supabase
+    .from("alerts")
+    .select("ticker,notified_date")
+    .eq("user_id", uid);
+  return new Map(
+    (data ?? [])
+      .filter((r) => r.notified_date)
+      .map((r) => [r.ticker, r.notified_date as string]),
+  );
+}
+
+export async function markAlertNotified(uid: string, ticker: string, day: string) {
+  await supabase
+    .from("alerts")
+    .update({ notified_date: day })
+    .eq("user_id", uid)
+    .eq("ticker", ticker);
+}

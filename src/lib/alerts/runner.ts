@@ -2,6 +2,7 @@ import "server-only";
 import {
   getAlerts, getCustomWatchlist, getAllTelegramTargets,
   getRsiState, saveRsiStates, getAlertNotifiedDates, markAlertNotified,
+  getCandidatesToWatch, markCandidateNotified,
   type RsiState, type RsiZone, type TelegramTarget,
 } from "@/lib/data";
 import { getEurUsd, getSnapshots } from "@/lib/market/quotes";
@@ -39,6 +40,8 @@ async function sendTelegram(t: TelegramTarget, text: string): Promise<boolean> {
 export type RunSummary = {
   users: number;
   priceAlerts: number;
+  /** Candidats dont le prix visé a été atteint. */
+  candidateAlerts: number;
   rsiAlerts: number;
   scans: number;
   errors: string[];
@@ -61,7 +64,7 @@ export type RunOptions = { dryRun?: boolean };
 export async function runPriceAlerts(opts: RunOptions = {}): Promise<RunSummary> {
   const dry = Boolean(opts.dryRun);
   const summary: RunSummary = {
-    users: 0, priceAlerts: 0, rsiAlerts: 0, scans: 0, errors: [],
+    users: 0, priceAlerts: 0, candidateAlerts: 0, rsiAlerts: 0, scans: 0, errors: [],
     ...(dry ? { preview: [] as string[] } : {}),
   };
   const deliver = async (t: TelegramTarget, text: string) => {
@@ -78,6 +81,36 @@ export async function runPriceAlerts(opts: RunOptions = {}): Promise<RunSummary>
   for (const target of targets) {
     const uid = target.user_id;
     try {
+      // ── Prix visés sur les candidats ──────────────────────────────────────
+      // Un candidat porte déjà un prix d'achat souhaité : le surveiller relève
+      // de la même question qu'une alerte, à la même cadence.
+      const { rows: watched, error: candidateError } = await getCandidatesToWatch(uid);
+      if (candidateError) {
+        summary.errors.push(
+          `${uid}: candidats non surveillés — ${candidateError}. ` +
+            "Exécute sql/candidates.sql dans Supabase.",
+        );
+      }
+      if (watched.length) {
+        const snaps = await getSnapshots(watched.map((c) => c.ticker), "1mo", eurusd);
+
+        for (const c of watched) {
+          const snap = snaps.get(c.ticker);
+          if (!snap || c.notified_date === day) continue;
+          if (snap.priceEur > c.prix_cible) continue;
+
+          const msg =
+            `🎯 <b>Prix visé atteint — ${esc(c.nom)}</b>\n` +
+            `${eur(snap.priceEur)} ≤ ${eur(c.prix_cible)}\n` +
+            `Relis ta thèse avant de décider.`;
+
+          if (await deliver(target, msg)) {
+            if (!dry) await markCandidateNotified(uid, c.ticker, day);
+            summary.candidateAlerts++;
+          }
+        }
+      }
+
       // ── Seuils de prix ────────────────────────────────────────────────────
       const alerts = await getAlerts(uid);
       if (alerts.length) {
@@ -130,7 +163,7 @@ export async function runPriceAlerts(opts: RunOptions = {}): Promise<RunSummary>
 export async function runRsiAlerts(opts: RunOptions = {}): Promise<RunSummary> {
   const dry = Boolean(opts.dryRun);
   const summary: RunSummary = {
-    users: 0, priceAlerts: 0, rsiAlerts: 0, scans: 0, errors: [],
+    users: 0, priceAlerts: 0, candidateAlerts: 0, rsiAlerts: 0, scans: 0, errors: [],
     ...(dry ? { preview: [] as string[] } : {}),
   };
   const deliver = async (t: TelegramTarget, text: string) => {
@@ -209,7 +242,7 @@ export async function runRsiAlerts(opts: RunOptions = {}): Promise<RunSummary> {
 export async function runScan(opts: RunOptions = {}): Promise<RunSummary> {
   const dry = Boolean(opts.dryRun);
   const summary: RunSummary = {
-    users: 0, priceAlerts: 0, rsiAlerts: 0, scans: 0, errors: [],
+    users: 0, priceAlerts: 0, candidateAlerts: 0, rsiAlerts: 0, scans: 0, errors: [],
     ...(dry ? { preview: [] as string[] } : {}),
   };
   const deliver = async (t: TelegramTarget, text: string) => {
@@ -276,6 +309,7 @@ export async function runAlerts(opts: RunOptions = {}): Promise<RunSummary> {
   return {
     users: Math.max(a.users, b.users),
     priceAlerts: a.priceAlerts,
+    candidateAlerts: a.candidateAlerts,
     rsiAlerts: b.rsiAlerts,
     scans: 0,
     errors: [...a.errors, ...b.errors],

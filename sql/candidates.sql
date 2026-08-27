@@ -17,7 +17,12 @@ create table if not exists candidates (
   note_sortie text default '',
   created_at  timestamptz default now(),
   updated_at  timestamptz default now(),
+  -- Dernière notification « prix visé atteint », pour n'alerter qu'une fois par jour.
+  notified_date text,
   unique (user_id, ticker)
 );
+
+-- Si la table existait déjà sans cette colonne :
+alter table candidates add column if not exists notified_date text;
 
 create index if not exists candidates_lookup on candidates (user_id, statut);

@@ -368,3 +368,39 @@ export async function upsertCandidate(
 export async function deleteCandidate(uid: string, ticker: string) {
   await supabase.from("candidates").delete().eq("user_id", uid).eq("ticker", ticker);
 }
+
+export type CandidateWatch = {
+  ticker: string;
+  nom: string;
+  prix_cible: number;
+  notified_date: string | null;
+};
+
+/**
+ * Candidats encore sous surveillance et assortis d'un prix visé : les seuls que
+ * le cron ait une raison de suivre.
+ */
+export async function getCandidatesToWatch(
+  uid: string,
+): Promise<{ rows: CandidateWatch[]; error?: string }> {
+  const { data, error } = await supabase
+    .from("candidates")
+    .select("ticker,nom,prix_cible,notified_date")
+    .eq("user_id", uid)
+    .eq("statut", "surveille")
+    .not("prix_cible", "is", null);
+
+  // Une table ou une colonne manquante ne doit pas se traduire par « rien à
+  // signaler » : c'est indiscernable d'un candidat dont la cible n'est pas
+  // atteinte, et la surveillance reste muette sans qu'on sache pourquoi.
+  if (error) return { rows: [], error: error.message };
+  return { rows: (data ?? []) as CandidateWatch[] };
+}
+
+export async function markCandidateNotified(uid: string, ticker: string, day: string) {
+  await supabase
+    .from("candidates")
+    .update({ notified_date: day })
+    .eq("user_id", uid)
+    .eq("ticker", ticker);
+}

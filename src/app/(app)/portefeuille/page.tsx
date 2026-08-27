@@ -3,7 +3,11 @@ import {
   getPortfolio, getTransactions, getJournal, getCustomWatchlist,
 } from "@/lib/data";
 import { getEurUsd, getSnapshots, getSeries } from "@/lib/market/quotes";
-import { buildPortfolioCurve } from "@/lib/market/portfolio-curve";
+import {
+  buildHistory, timeWeightedReturn, internalRateOfReturn, replayOnBenchmark,
+  performanceIndex, annualisedVolatility, drawdownSeries,
+  type Tx,
+} from "@/lib/portfolio/history";
 import { WATCHLIST } from "@/lib/market/constants";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PositionsTab } from "./positions-tab";
@@ -58,28 +62,62 @@ export default async function PortefeuillePage() {
   const totalInvest = priced.reduce((a, r) => a + r.invest, 0);
   const unpriced = rows.filter((r) => r.value === null).map((r) => r.ticker);
 
-  // ── Courbe de valorisation sur 1 an ─────────────────────────────────────────
-  const histories = await Promise.all(
-    portfolio.map(async (p) => {
-      const s = await getSeries(p.ticker, "1y");
-      if (!s) return null;
+  // ── Historique réel, reconstruit depuis les transactions ────────────────────
+  // Les cours sont chargés sur deux ans : l'historique doit remonter au premier
+  // achat, pas seulement à l'année écoulée.
+  const tickersHistoriques = [...new Set(transactions.map((t) => t.ticker))];
+  const priceMaps = new Map<string, Map<string, number>>();
+  await Promise.all(
+    tickersHistoriques.map(async (ticker) => {
+      const s = await getSeries(ticker, "2y");
+      if (!s) return;
       const fx = s.currency === "EUR" ? 1 : 1 / eurusd;
-      return {
-        quantite: p.quantite,
-        prices: new Map(s.candles.map((c) => [c.date, c.close * fx])),
-      };
+      priceMaps.set(ticker, new Map(s.candles.map((c) => [c.date, c.close * fx])));
     }),
   );
-  const curve: PortfolioPoint[] = buildPortfolioCurve(
-    histories.filter((h): h is NonNullable<typeof h> => h !== null),
-  );
 
-  const benchmark = await getSeries("SPY", "1y");
-  let spyPerf: number | null = null;
-  if (benchmark && benchmark.candles.length > 1) {
-    const first = benchmark.candles[0].close;
-    const last = benchmark.candles.at(-1)!.close;
-    spyPerf = (last / first - 1) * 100;
+  const ledger: Tx[] = transactions.map((t) => ({
+    date: t.date,
+    ticker: t.ticker,
+    action: t.action,
+    quantite: t.quantite,
+    prix: t.prix,
+  }));
+
+  const history = buildHistory(ledger, priceMaps);
+  const curve: PortfolioPoint[] = history.map((h) => ({
+    date: h.date,
+    value: h.value,
+    invested: h.invested,
+  }));
+
+  const twr = timeWeightedReturn(history);
+  const irr = internalRateOfReturn(history);
+
+  // Volatilité, drawdown et Sharpe se mesurent sur l'indice de performance :
+  // sur la valeur en euros, chaque versement passerait pour un rendement.
+  const perf = performanceIndex(history);
+  const volatility = annualisedVolatility(perf);
+  const drawdown = drawdownSeries(perf);
+  const maxDrawdown = drawdown.length ? Math.min(...drawdown.map((d) => d.dd)) : null;
+
+  const years = Math.max(perf.length / 252, 0.08);
+  const annualisedTwr = twr !== null ? ((1 + twr / 100) ** (1 / years) - 1) * 100 : null;
+  const sharpe =
+    volatility && volatility > 0 && annualisedTwr !== null
+      ? (annualisedTwr - 3) / volatility
+      : null;
+
+  // Mêmes versements, mêmes dates, sur le S&P 500 : la seule comparaison juste
+  // quand l'argent entre progressivement.
+  const spy = await getSeries("SPY", "2y");
+  let benchmark: { value: number; invested: number } | null = null;
+  if (spy) {
+    const fx = spy.currency === "EUR" ? 1 : 1 / eurusd;
+    benchmark = replayOnBenchmark(
+      history,
+      new Map(spy.candles.map((c) => [c.date, c.close * fx])),
+    );
   }
 
   return (
@@ -114,11 +152,16 @@ export default async function PortefeuillePage() {
         <TabsContent value="analytics" className="pt-5">
           <AnalyticsTab
             curve={curve}
-            invested={totalInvest}
+            twr={twr}
+            irr={irr}
+            benchmark={benchmark}
+            volatility={volatility}
+            sharpe={sharpe}
+            maxDrawdown={maxDrawdown}
+            drawdown={drawdown}
             allocation={rows
               .filter((r) => r.value !== null)
               .map((r) => ({ nom: r.nom, value: r.value! }))}
-            spyPerf={spyPerf}
           />
         </TabsContent>
 

@@ -4,6 +4,7 @@ import { getEurUsd, getSeries, sliceToPeriod } from "@/lib/market/quotes";
 import { WATCHLIST, type PeriodKey } from "@/lib/market/constants";
 import { PeriodPicker } from "@/components/period-picker";
 import { ComparisonView, type CompareSeries } from "./comparison-view";
+import { PageHeader } from "@/components/stat-card";
 
 export const dynamic = "force-dynamic";
 
@@ -56,15 +57,11 @@ export default async function ComparaisonPage({
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Comparaison</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Performance relative, base 100 à la date de départ.
-          </p>
-        </div>
-        <PeriodPicker current={period} />
-      </header>
+      <PageHeader
+        title="Comparaison"
+        description="Performance relative, base 100 à la date de départ."
+        actions={<PeriodPicker current={period} />}
+      />
 
       <ComparisonView universe={universe} selected={selected} series={series} />
     </div>

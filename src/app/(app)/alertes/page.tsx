@@ -3,6 +3,7 @@ import { getAlerts, getCustomWatchlist } from "@/lib/data";
 import { getEurUsd, getSnapshots } from "@/lib/market/quotes";
 import { WATCHLIST } from "@/lib/market/constants";
 import { AlertsView, type AlertRow } from "./alerts-view";
+import { PageHeader } from "@/components/stat-card";
 
 export const dynamic = "force-dynamic";
 
@@ -42,13 +43,10 @@ export default async function AlertesPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Alertes prix</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Définis des seuils par titre. Ils apparaissent sur le dashboard et, si
-          Telegram est configuré, déclenchent une notification.
-        </p>
-      </header>
+      <PageHeader
+        title="Alertes prix"
+        description="Définis des seuils par titre. Ils remontent sur le dashboard et, si Telegram est configuré, déclenchent une notification."
+      />
 
       <AlertsView rows={rows} universe={universe} prices={prices} />
     </div>

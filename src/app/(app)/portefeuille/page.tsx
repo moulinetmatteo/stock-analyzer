@@ -10,6 +10,7 @@ import { PositionsTab } from "./positions-tab";
 import { TransactionsTab } from "./transactions-tab";
 import { AnalyticsTab, type PortfolioPoint } from "./analytics-tab";
 import { JournalTab } from "./journal-tab";
+import { PageHeader } from "@/components/stat-card";
 
 export const dynamic = "force-dynamic";
 
@@ -83,13 +84,10 @@ export default async function PortefeuillePage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Mon Portefeuille</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {portfolio.length} position{portfolio.length > 1 ? "s" : ""} ·{" "}
-          {transactions.length} transaction{transactions.length > 1 ? "s" : ""}
-        </p>
-      </header>
+      <PageHeader
+        title="Mon portefeuille"
+        description={`${portfolio.length} position${portfolio.length > 1 ? "s" : ""} · ${transactions.length} transaction${transactions.length > 1 ? "s" : ""}`}
+      />
 
       <Tabs defaultValue="positions">
         <TabsList>

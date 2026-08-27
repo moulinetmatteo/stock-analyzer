@@ -1,14 +1,14 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { getPortfolio, getAlerts } from "@/lib/data";
 import { getEurUsd, getSnapshots, getEarningsDate } from "@/lib/market/quotes";
 import { WATCHLIST, WATCHLIST_BY_TICKER } from "@/lib/market/constants";
-import { StatCard, StatGrid } from "@/components/stat-card";
-import { RsiPill } from "@/components/signal-badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard, StatGrid, PageHeader, SectionTitle } from "@/components/stat-card";
+import { RsiPill, DeltaText } from "@/components/signal-badge";
 import { Heatmap } from "@/components/heatmap";
-import { fmtEur, fmtPct, pnlColor } from "@/lib/utils";
-import { ArrowDown, ArrowUp, Bell } from "lucide-react";
+import { fmtEur } from "@/lib/utils";
+import { ArrowDown, ArrowUp, Bell, CalendarDays } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -25,9 +25,8 @@ export default async function DashboardPage() {
   const allTickers = [...new Set([...watchTickers, ...portfolio.map((p) => p.ticker)])];
   const snaps = await getSnapshots(allTickers, "3mo", eurusd);
 
-  // ── Valorisation du portefeuille ────────────────────────────────────────────
-  // Seules les lignes effectivement valorisées entrent dans les totaux, sinon
-  // un ticker introuvable ferait apparaître une perte de 100 %.
+  // Seules les lignes valorisées entrent dans les totaux : un ticker introuvable
+  // ferait autrement apparaître une perte de 100 %.
   let totalVal = 0;
   let totalInvest = 0;
   let unpriced = 0;
@@ -40,238 +39,225 @@ export default async function DashboardPage() {
   const pnl = totalVal - totalInvest;
   const pnlPct = totalInvest ? (pnl / totalInvest) * 100 : 0;
 
-  // ── Mouvements du jour ──────────────────────────────────────────────────────
   const movers = WATCHLIST.map((w) => {
     const s = snaps.get(w.ticker);
-    return s ? { ...w, price: s.priceEur, change: s.changePct } : null;
+    return s ? { ...w, price: s.priceEur, change: s.changePct, rsi: s.rsi } : null;
   })
     .filter((x): x is NonNullable<typeof x> => x !== null)
     .sort((a, b) => b.change - a.change);
 
-  const topUp = movers.slice(0, 5);
-  const topDown = movers.slice(-5).reverse();
+  const rsiBuy = movers.filter((m) => m.rsi !== null && m.rsi < 30).sort((a, b) => a.rsi! - b.rsi!);
+  const rsiSell = movers.filter((m) => m.rsi !== null && m.rsi > 70).sort((a, b) => b.rsi! - a.rsi!);
 
-  // ── Opportunités RSI ────────────────────────────────────────────────────────
-  const rsiBuy = movers
-    .map((m) => ({ ...m, rsi: snaps.get(m.ticker)?.rsi ?? null }))
-    .filter((m) => m.rsi !== null && m.rsi < 30)
-    .sort((a, b) => a.rsi! - b.rsi!);
-  const rsiSell = movers
-    .map((m) => ({ ...m, rsi: snaps.get(m.ticker)?.rsi ?? null }))
-    .filter((m) => m.rsi !== null && m.rsi > 70)
-    .sort((a, b) => b.rsi! - a.rsi!);
-
-  // ── Alertes déclenchées ─────────────────────────────────────────────────────
-  type Triggered = {
-    ticker: string;
-    nom: string;
-    price: number;
-    kind: "achat" | "vente";
-    seuil: number;
-  };
+  type Triggered = { ticker: string; nom: string; price: number; kind: "achat" | "vente"; seuil: number };
   const triggered: Triggered[] = [];
   for (const a of alerts) {
     const s = snaps.get(a.ticker);
     if (!s) continue;
     if (a.seuil_bas && s.priceEur <= a.seuil_bas) {
-      triggered.push({
-        ticker: a.ticker, nom: a.nom, price: s.priceEur, kind: "achat", seuil: a.seuil_bas,
-      });
+      triggered.push({ ticker: a.ticker, nom: a.nom, price: s.priceEur, kind: "achat", seuil: a.seuil_bas });
     } else if (a.seuil_haut && s.priceEur >= a.seuil_haut) {
-      triggered.push({
-        ticker: a.ticker, nom: a.nom, price: s.priceEur, kind: "vente", seuil: a.seuil_haut,
-      });
+      triggered.push({ ticker: a.ticker, nom: a.nom, price: s.priceEur, kind: "vente", seuil: a.seuil_haut });
     }
   }
 
-  // ── Heatmap ─────────────────────────────────────────────────────────────────
-  const heatData = movers.map((m) => ({
-    secteur: m.secteur,
-    nom: m.nom,
-    change: m.change,
-  }));
+  const advancing = movers.filter((m) => m.change > 0).length;
+  const breadth = movers.length ? Math.round((advancing / movers.length) * 100) : 0;
 
   return (
     <div className="space-y-7">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Bonjour {user.name} — vue d&apos;ensemble du marché et de ton portefeuille.
-        </p>
-      </header>
+      <PageHeader
+        title={`Bonjour ${user.name}`}
+        description={`${movers.length} titres suivis · ${advancing} en hausse aujourd'hui`}
+      />
 
       {portfolio.length > 0 && (
         <StatGrid>
-          <StatCard label="Valeur du portefeuille" value={fmtEur(totalVal)} />
-          <StatCard label="Montant investi" value={fmtEur(totalInvest)} />
+          <StatCard label="Valeur du portefeuille" value={fmtEur(totalVal)} size="lg" />
+          <StatCard label="Montant investi" value={fmtEur(totalInvest)} size="lg" />
           <StatCard
-            label="P&L total"
+            label="Plus / moins-value"
             value={fmtEur(pnl)}
-            delta={fmtPct(pnlPct)}
+            size="lg"
+            delta={`${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)} %`}
             deltaTone={pnl > 0 ? "gain" : pnl < 0 ? "loss" : "muted"}
           />
           <StatCard
             label="Positions"
             value={String(portfolio.length)}
+            size="lg"
             hint={unpriced ? `dont ${unpriced} sans cours` : undefined}
           />
         </StatGrid>
       )}
 
       {triggered.length > 0 && (
-        <Card className="border-[var(--gain)]/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Bell className="size-4" />
-              Alertes déclenchées
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
+        <div className="surface-card overflow-hidden">
+          <div className="flex items-center gap-2 border-b px-4 py-2.5">
+            <Bell className="text-warn size-4" />
+            <span className="text-sm font-medium">
+              {triggered.length} alerte{triggered.length > 1 ? "s" : ""} déclenchée
+              {triggered.length > 1 ? "s" : ""}
+            </span>
+          </div>
+          <ul className="divide-y">
             {triggered.map((t) => (
-              <div key={t.ticker} className="flex items-center justify-between text-sm">
+              <li key={t.ticker} className="flex items-center justify-between px-4 py-2.5 text-sm">
                 <span className="font-medium">
-                  {t.nom} <span className="text-muted-foreground">({t.ticker})</span>
+                  {t.nom} <span className="text-muted-foreground ml-1 font-mono text-xs">{t.ticker}</span>
                 </span>
                 <span
-                  className={
-                    t.kind === "achat" ? "text-[var(--gain)] tabular" : "text-[var(--loss)] tabular"
-                  }
+                  className="tabular"
+                  style={{ color: t.kind === "achat" ? "var(--gain)" : "var(--loss)" }}
                 >
                   {fmtEur(t.price)} {t.kind === "achat" ? "≤" : "≥"} {fmtEur(t.seuil)}
                 </span>
-              </div>
+              </li>
             ))}
-          </CardContent>
-        </Card>
+          </ul>
+        </div>
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <MoverList title="Top hausses" icon="up" rows={topUp} />
-        <MoverList title="Top baisses" icon="down" rows={topDown} />
+        <MoverList title="Plus fortes hausses" direction="up" rows={movers.slice(0, 5)} />
+        <MoverList title="Plus fortes baisses" direction="down" rows={movers.slice(-5).reverse()} />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Heatmap du marché</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Heatmap data={heatData} />
-        </CardContent>
-      </Card>
+      <section className="surface-card p-5">
+        <SectionTitle aside={`${breadth} % des titres en hausse`}>
+          Heatmap du marché
+        </SectionTitle>
+        <Heatmap
+          data={movers.map((m) => ({
+            secteur: m.secteur, nom: m.nom, ticker: m.ticker, change: m.change,
+          }))}
+        />
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Zone d&apos;achat{" "}
-              <span className="font-normal text-muted-foreground">RSI &lt; 30</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {rsiBuy.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Aucune action en zone de survente.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {rsiBuy.map((r) => (
-                  <li key={r.ticker} className="flex items-center justify-between text-sm">
-                    <span>{r.nom}</span>
-                    <span className="flex items-center gap-3">
-                      <span className="tabular text-muted-foreground">{fmtEur(r.price)}</span>
-                      <RsiPill value={r.rsi} />
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Zone de vente{" "}
-              <span className="font-normal text-muted-foreground">RSI &gt; 70</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {rsiSell.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Aucune action en zone de surachat.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {rsiSell.map((r) => (
-                  <li key={r.ticker} className="flex items-center justify-between text-sm">
-                    <span>{r.nom}</span>
-                    <span className="flex items-center gap-3">
-                      <span className="tabular text-muted-foreground">{fmtEur(r.price)}</span>
-                      <RsiPill value={r.rsi} />
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        <OpportunityList
+          title="Zone d'achat"
+          caption="RSI sous 30 — survente"
+          tone="gain"
+          rows={rsiBuy}
+          empty="Aucun titre en survente."
+        />
+        <OpportunityList
+          title="Zone de vente"
+          caption="RSI au-dessus de 70 — surachat"
+          tone="loss"
+          rows={rsiSell}
+          empty="Aucun titre en surachat."
+        />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Prochains résultats</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Suspense
-            fallback={<p className="text-sm text-muted-foreground">Chargement…</p>}
-          >
-            <EarningsList portfolioTickers={portfolio.map((p) => p.ticker)} />
-          </Suspense>
-        </CardContent>
-      </Card>
+      <section className="surface-card p-5">
+        <SectionTitle>
+          <span className="inline-flex items-center gap-2">
+            <CalendarDays className="text-muted-foreground size-4" />
+            Prochains résultats
+          </span>
+        </SectionTitle>
+        <Suspense fallback={<p className="text-muted-foreground text-sm">Chargement…</p>}>
+          <EarningsList portfolioTickers={portfolio.map((p) => p.ticker)} />
+        </Suspense>
+      </section>
     </div>
   );
 }
 
 function MoverList({
   title,
-  icon,
+  direction,
   rows,
 }: {
   title: string;
-  icon: "up" | "down";
+  direction: "up" | "down";
   rows: { ticker: string; nom: string; price: number; change: number }[];
 }) {
-  const Icon = icon === "up" ? ArrowUp : ArrowDown;
-  const tone = icon === "up" ? "text-[var(--gain)]" : "text-[var(--loss)]";
+  const Icon = direction === "up" ? ArrowUp : ArrowDown;
+  const tone = direction === "up" ? "var(--gain)" : "var(--loss)";
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Icon className={`size-4 ${tone}`} />
+    <section className="surface-card p-5">
+      <SectionTitle>
+        <span className="inline-flex items-center gap-2">
+          <Icon className="size-4" style={{ color: tone }} strokeWidth={2.5} />
           {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ul className="space-y-2">
-          {rows.map((r) => (
-            <li key={r.ticker} className="flex items-center justify-between text-sm">
-              <span>
-                {r.nom}{" "}
-                <span className="text-xs text-muted-foreground">{r.ticker}</span>
-              </span>
-              <span className="flex items-center gap-3">
-                <span className="tabular text-muted-foreground">{fmtEur(r.price)}</span>
-                <span className={`tabular font-medium ${pnlColor(r.change)}`}>
-                  {fmtPct(r.change)}
+        </span>
+      </SectionTitle>
+      <ul className="divide-y">
+        {rows.map((r) => (
+          <li key={r.ticker}>
+            <Link
+              href={`/analyse?ticker=${encodeURIComponent(r.ticker)}`}
+              className="hover:bg-accent/40 -mx-2 flex items-center justify-between rounded-md px-2 py-2 text-sm transition-colors"
+            >
+              <span className="min-w-0 truncate">
+                {r.nom}
+                <span className="text-muted-foreground ml-1.5 font-mono text-[0.7rem]">
+                  {r.ticker}
                 </span>
               </span>
+              <span className="flex shrink-0 items-center gap-4">
+                <span className="tabular text-muted-foreground">{fmtEur(r.price)}</span>
+                <span className="w-[4.5rem] text-right">
+                  <DeltaText value={r.change} />
+                </span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function OpportunityList({
+  title,
+  caption,
+  tone,
+  rows,
+  empty,
+}: {
+  title: string;
+  caption: string;
+  tone: "gain" | "loss";
+  rows: { ticker: string; nom: string; price: number; rsi: number | null }[];
+  empty: string;
+}) {
+  return (
+    <section className="surface-card p-5">
+      <SectionTitle aside={caption}>
+        <span className="inline-flex items-center gap-2">
+          <span
+            className="size-1.5 rounded-full"
+            style={{ backgroundColor: `var(--${tone})` }}
+          />
+          {title}
+        </span>
+      </SectionTitle>
+      {rows.length === 0 ? (
+        <p className="text-muted-foreground py-3 text-sm">{empty}</p>
+      ) : (
+        <ul className="divide-y">
+          {rows.map((r) => (
+            <li key={r.ticker}>
+              <Link
+                href={`/analyse?ticker=${encodeURIComponent(r.ticker)}`}
+                className="hover:bg-accent/40 -mx-2 flex items-center justify-between rounded-md px-2 py-2 text-sm transition-colors"
+              >
+                <span className="truncate">{r.nom}</span>
+                <span className="flex shrink-0 items-center gap-4">
+                  <span className="tabular text-muted-foreground">{fmtEur(r.price)}</span>
+                  <RsiPill value={r.rsi} gauge />
+                </span>
+              </Link>
             </li>
           ))}
         </ul>
-      </CardContent>
-    </Card>
+      )}
+    </section>
   );
 }
 
@@ -288,33 +274,39 @@ async function EarningsList({ portfolioTickers }: { portfolioTickers: string[] }
   const rows = results
     .filter((r): r is { ticker: string; date: string } => !!r.date && r.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 10);
+    .slice(0, 8);
 
   if (!rows.length) {
-    return <p className="text-sm text-muted-foreground">Aucune date connue prochainement.</p>;
+    return <p className="text-muted-foreground text-sm">Aucune date connue prochainement.</p>;
   }
 
   return (
-    <ul className="space-y-2">
+    <ul className="divide-y">
       {rows.map((r) => {
         const w = WATCHLIST_BY_TICKER.get(r.ticker);
         const held = portfolioTickers.includes(r.ticker);
+        const days = Math.round(
+          (new Date(r.date).getTime() - new Date(today).getTime()) / 86400000,
+        );
         return (
-          <li key={r.ticker} className="flex items-center justify-between text-sm">
-            <span>
-              {w?.nom ?? r.ticker}
+          <li key={r.ticker} className="flex items-center justify-between py-2 text-sm">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate">{w?.nom ?? r.ticker}</span>
               {held && (
-                <span className="ml-2 rounded bg-[var(--gain)]/15 px-1.5 py-0.5 text-xs text-[var(--gain)]">
+                <span className="bg-[var(--gain-soft)] text-[var(--gain)] rounded px-1.5 py-0.5 text-[0.65rem] font-medium">
                   en portefeuille
                 </span>
               )}
             </span>
-            <span className="tabular text-muted-foreground">
-              {new Date(r.date).toLocaleDateString("fr-FR", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              })}
+            <span className="flex shrink-0 items-center gap-3">
+              <span className="text-muted-foreground tabular text-xs">
+                {days === 0 ? "aujourd'hui" : days === 1 ? "demain" : `dans ${days} j`}
+              </span>
+              <span className="tabular w-[5.5rem] text-right">
+                {new Date(r.date).toLocaleDateString("fr-FR", {
+                  day: "2-digit", month: "short", year: "2-digit",
+                })}
+              </span>
             </span>
           </li>
         );

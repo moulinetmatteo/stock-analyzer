@@ -5,6 +5,7 @@ import { WATCHLIST, type PeriodKey } from "@/lib/market/constants";
 import { signalBadge } from "@/lib/market/indicators";
 import { ScreenerTable, type ScreenerRow } from "./screener-table";
 import { PeriodPicker } from "@/components/period-picker";
+import { PageHeader } from "@/components/stat-card";
 
 export const dynamic = "force-dynamic";
 
@@ -57,17 +58,16 @@ export default async function ScreenerPage({
     }];
   });
 
+  const buys = rows.filter((r) => r.signal.toLowerCase().includes("achat")).length;
+  const sells = rows.filter((r) => r.signal.toLowerCase().includes("vente")).length;
+
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Screener</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {rows.length} titres · RSI &lt; 30 signale une survente, &gt; 70 un surachat.
-          </p>
-        </div>
-        <PeriodPicker current={period} />
-      </header>
+      <PageHeader
+        title="Screener"
+        description={`${rows.length} titres analysés · ${buys} signal(aux) d'achat, ${sells} de vente`}
+        actions={<PeriodPicker current={period} />}
+      />
 
       <ScreenerTable rows={rows} />
     </div>

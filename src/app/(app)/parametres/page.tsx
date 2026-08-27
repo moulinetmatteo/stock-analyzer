@@ -3,6 +3,7 @@ import { getCustomWatchlist, getTelegramConfig } from "@/lib/data";
 import { TelegramCard } from "./telegram-card";
 import { WatchlistCard } from "./watchlist-card";
 import { DangerZone } from "./danger-zone";
+import { PageHeader } from "@/components/stat-card";
 
 export const dynamic = "force-dynamic";
 
@@ -15,12 +16,10 @@ export default async function ParametresPage() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Paramètres</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Connecté en tant que <strong>{user.name}</strong> ({user.username})
-        </p>
-      </header>
+      <PageHeader
+        title="Paramètres"
+        description={`Connecté en tant que ${user.name} (${user.username})`}
+      />
 
       <WatchlistCard items={custom} />
       <TelegramCard config={tg} />

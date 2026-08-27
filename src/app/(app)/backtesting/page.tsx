@@ -5,6 +5,7 @@ import { WATCHLIST, type PeriodKey } from "@/lib/market/constants";
 import { runBacktest, type Strategy } from "@/lib/market/backtest";
 import { BacktestForm } from "./backtest-form";
 import { BacktestResults } from "./backtest-results";
+import { PageHeader } from "@/components/stat-card";
 
 export const dynamic = "force-dynamic";
 
@@ -59,13 +60,10 @@ export default async function BacktestingPage({
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Backtesting</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Rejoue une stratégie sur l&apos;historique et compare-la au simple
-          buy-and-hold. Aucun frais de courtage n&apos;est modélisé.
-        </p>
-      </header>
+      <PageHeader
+        title="Backtesting"
+        description="Rejoue une stratégie sur l'historique et compare-la au buy-and-hold. Aucun frais de courtage n'est modélisé."
+      />
 
       <BacktestForm universe={universe} params={params} />
 

@@ -1,19 +1,24 @@
 "use client";
 
+import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { fmtPct } from "@/lib/utils";
 
-type Cell = { secteur: string; nom: string; change: number };
+type Cell = { secteur: string; nom: string; ticker: string; change: number };
+
+/** Ordre stable des secteurs, sinon il suit l'ordre de tri des données. */
+const ORDER = ["US Tech", "US Finance", "US Santé", "US Énergie", "France", "ETF"];
 
 /**
- * Intensité de fond proportionnelle à la variation, saturée à ±3 % pour que les
- * mouvements ordinaires restent lisibles au lieu d'être tous au maximum.
+ * Intensité saturée à ±2,5 % : au-delà, tout le marché paraîtrait au maximum
+ * les jours de forte volatilité et la nuance disparaîtrait.
  */
-function tone(change: number): string {
-  const mag = Math.min(Math.abs(change) / 3, 1);
-  const alpha = 0.1 + mag * 0.45;
+function tone(change: number) {
+  const mag = Math.min(Math.abs(change) / 2.5, 1);
   const color = change >= 0 ? "var(--gain)" : "var(--loss)";
-  return `color-mix(in oklch, ${color} ${(alpha * 100).toFixed(0)}%, transparent)`;
+  return {
+    background: `color-mix(in oklch, ${color} ${(8 + mag * 40).toFixed(0)}%, var(--card))`,
+    borderColor: `color-mix(in oklch, ${color} ${(14 + mag * 30).toFixed(0)}%, transparent)`,
+  };
 }
 
 export function Heatmap({ data }: { data: Cell[] }) {
@@ -22,37 +27,53 @@ export function Heatmap({ data }: { data: Cell[] }) {
     return acc;
   }, {});
 
+  const sectors = Object.keys(bySector).sort(
+    (a, b) => (ORDER.indexOf(a) + 1 || 99) - (ORDER.indexOf(b) + 1 || 99),
+  );
+
   return (
-    <div className="space-y-4">
-      {Object.entries(bySector).map(([secteur, cells]) => (
-        <section key={secteur}>
-          <h3 className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            {secteur}
-          </h3>
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
-            {cells
-              .sort((a, b) => b.change - a.change)
-              .map((c) => (
-                <div
-                  key={c.nom}
-                  style={{ backgroundColor: tone(c.change) }}
-                  className="rounded-md border px-2.5 py-2"
-                  title={`${c.nom} · ${fmtPct(c.change)}`}
+    <div className="space-y-5">
+      {sectors.map((secteur) => {
+        const cells = [...bySector[secteur]].sort((a, b) => b.change - a.change);
+        const avg = cells.reduce((s, c) => s + c.change, 0) / cells.length;
+
+        return (
+          <section key={secteur}>
+            <div className="mb-2 flex items-baseline gap-2.5">
+              <h3 className="label-eyebrow">{secteur}</h3>
+              <span
+                className="tabular text-[0.7rem] font-medium"
+                style={{ color: avg >= 0 ? "var(--gain)" : "var(--loss)" }}
+              >
+                {avg >= 0 ? "+" : ""}{avg.toFixed(2)}%
+              </span>
+              <span className="bg-border h-px flex-1" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
+              {cells.map((c) => (
+                <Link
+                  key={c.ticker}
+                  href={`/analyse?ticker=${encodeURIComponent(c.ticker)}`}
+                  style={tone(c.change)}
+                  className={cn(
+                    "rounded-md border px-2.5 py-2 transition-transform",
+                    "hover:z-10 hover:scale-[1.03]",
+                  )}
                 >
                   <p className="truncate text-xs font-medium">{c.nom}</p>
                   <p
-                    className={cn(
-                      "tabular text-sm font-semibold",
-                      c.change >= 0 ? "text-[var(--gain)]" : "text-[var(--loss)]",
-                    )}
+                    className="tabular mt-0.5 text-sm font-semibold"
+                    style={{ color: c.change >= 0 ? "var(--gain)" : "var(--loss)" }}
                   >
-                    {fmtPct(c.change)}
+                    {c.change >= 0 ? "+" : ""}{c.change.toFixed(2)}%
                   </p>
-                </div>
+                </Link>
               ))}
-          </div>
-        </section>
-      ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { SignalBadge, RsiPill } from "@/components/signal-badge";
-import { fmtEur, fmtPct, pnlColor, cn } from "@/lib/utils";
+import { SignalBadge, RsiPill, DeltaText } from "@/components/signal-badge";
+import { fmtEur, cn } from "@/lib/utils";
 import type { SignalLevel } from "@/lib/market/indicators";
 
 export type ScreenerRow = {
@@ -124,23 +124,23 @@ export function ScreenerTable({ rows }: { rows: ScreenerRow[] }) {
         </span>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="surface-card overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <Th k="nom">Nom</Th>
-              <TableHead>Ticker</TableHead>
+              <TableHead className="label-eyebrow">Ticker</TableHead>
               <Th k="price" right>Prix</Th>
               <Th k="change" right>Var.</Th>
               <Th k="rsi" right>RSI</Th>
-              <TableHead className="text-right">Stoch %K</TableHead>
-              <TableHead>Cross</TableHead>
+              <TableHead className="label-eyebrow text-right">Stoch %K</TableHead>
+              <TableHead className="label-eyebrow">Cross</TableHead>
               <Th k="signal">Signal</Th>
             </TableRow>
           </TableHeader>
           <TableBody>
             {visible.map((r) => (
-              <TableRow key={r.ticker}>
+              <TableRow key={r.ticker} className="hover:bg-accent/35">
                 <TableCell className="font-medium">
                   <Link
                     href={`/analyse?ticker=${encodeURIComponent(r.ticker)}`}
@@ -153,10 +153,10 @@ export function ScreenerTable({ rows }: { rows: ScreenerRow[] }) {
                   {r.ticker}
                 </TableCell>
                 <TableCell className="text-right tabular">{fmtEur(r.price)}</TableCell>
-                <TableCell className={cn("text-right tabular font-medium", pnlColor(r.change))}>
-                  {fmtPct(r.change)}
+                <TableCell className="text-right">
+                  <DeltaText value={r.change} />
                 </TableCell>
-                <TableCell className="text-right"><RsiPill value={r.rsi} /></TableCell>
+                <TableCell className="text-right"><RsiPill value={r.rsi} gauge /></TableCell>
                 <TableCell className="text-right tabular text-muted-foreground">
                   {r.stochK !== null ? r.stochK.toFixed(1) : "—"}
                 </TableCell>

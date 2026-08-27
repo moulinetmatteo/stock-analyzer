@@ -3,80 +3,122 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ──────────────────────────────────────────────────────────────────────────
+   Thème clair
+   ────────────────────────────────────────────────────────────────────────── */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.984 0.003 247.858);
-  --sidebar-foreground: oklch(0.129 0.042 264.695);
-  --sidebar-primary: oklch(0.208 0.042 265.755);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.968 0.007 247.896);
-  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
-  --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-ring: oklch(0.704 0.04 256.788);
+  --radius: 0.7rem;
 
-  /* Sémantique finance */
-  --gain: oklch(0.72 0.19 149);
-  --loss: oklch(0.63 0.23 25);
+  --background: oklch(0.985 0.002 265);
+  --foreground: oklch(0.18 0.02 265);
+
+  --surface: oklch(1 0 0);
+  --surface-raised: oklch(1 0 0);
+
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--foreground);
+
+  --primary: oklch(0.55 0.19 275);
+  --primary-foreground: oklch(0.99 0.005 265);
+
+  --secondary: oklch(0.96 0.006 265);
+  --secondary-foreground: oklch(0.28 0.02 265);
+
+  --muted: oklch(0.965 0.005 265);
+  --muted-foreground: oklch(0.52 0.02 265);
+
+  --accent: oklch(0.955 0.008 275);
+  --accent-foreground: oklch(0.3 0.04 275);
+
+  --destructive: oklch(0.58 0.21 22);
+  --border: oklch(0.9 0.008 265);
+  --input: oklch(0.92 0.008 265);
+  --ring: oklch(0.55 0.19 275);
+
+  /* Sémantique finance — le vert tire vers la menthe, le rouge vers le corail,
+     pour rester lisibles côte à côte sans vibrer. */
+  --gain: oklch(0.58 0.15 158);
+  --loss: oklch(0.57 0.2 22);
+  --gain-soft: oklch(0.58 0.15 158 / 12%);
+  --loss-soft: oklch(0.57 0.2 22 / 12%);
+  --warn: oklch(0.66 0.15 65);
+
+  --chart-1: oklch(0.55 0.19 275);
+  --chart-2: oklch(0.6 0.14 195);
+  --chart-3: oklch(0.66 0.16 145);
+  --chart-4: oklch(0.7 0.15 65);
+  --chart-5: oklch(0.6 0.2 340);
+
+  --sidebar: oklch(0.975 0.004 265);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.94 0.01 275);
+  --sidebar-accent-foreground: oklch(0.3 0.05 275);
+  --sidebar-border: oklch(0.91 0.008 265);
+  --sidebar-ring: var(--ring);
+
+  --shadow-card: 0 1px 2px oklch(0.2 0.02 265 / 6%), 0 4px 12px oklch(0.2 0.02 265 / 4%);
+  --hairline: inset 0 1px 0 oklch(1 0 0 / 60%);
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+   Thème sombre — surfaces empilées plutôt qu'un aplat uniforme
+   ────────────────────────────────────────────────────────────────────────── */
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  --background: oklch(0.155 0.012 265);
+  --foreground: oklch(0.96 0.004 265);
 
-  --gain: oklch(0.75 0.19 150);
-  --loss: oklch(0.68 0.21 22);
+  --surface: oklch(0.19 0.013 265);
+  --surface-raised: oklch(0.225 0.014 265);
+
+  --card: oklch(0.194 0.013 265);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.225 0.014 265);
+  --popover-foreground: var(--foreground);
+
+  --primary: oklch(0.68 0.17 278);
+  --primary-foreground: oklch(0.16 0.02 265);
+
+  --secondary: oklch(0.25 0.015 265);
+  --secondary-foreground: oklch(0.95 0.005 265);
+
+  --muted: oklch(0.245 0.014 265);
+  --muted-foreground: oklch(0.68 0.018 265);
+
+  --accent: oklch(0.28 0.03 275);
+  --accent-foreground: oklch(0.94 0.02 275);
+
+  --destructive: oklch(0.66 0.19 22);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.68 0.17 278);
+
+  --gain: oklch(0.78 0.16 158);
+  --loss: oklch(0.7 0.18 22);
+  --gain-soft: oklch(0.78 0.16 158 / 14%);
+  --loss-soft: oklch(0.7 0.18 22 / 14%);
+  --warn: oklch(0.78 0.14 70);
+
+  --chart-1: oklch(0.68 0.17 278);
+  --chart-2: oklch(0.72 0.13 195);
+  --chart-3: oklch(0.78 0.16 158);
+  --chart-4: oklch(0.79 0.14 70);
+  --chart-5: oklch(0.7 0.19 340);
+
+  --sidebar: oklch(0.175 0.013 265);
+  --sidebar-foreground: oklch(0.94 0.004 265);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.26 0.028 275);
+  --sidebar-accent-foreground: oklch(0.95 0.02 275);
+  --sidebar-border: oklch(1 0 0 / 7%);
+  --sidebar-ring: var(--ring);
+
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 30%), 0 6px 20px oklch(0 0 0 / 22%);
+  --hairline: inset 0 1px 0 oklch(1 0 0 / 5%);
 }
 
 @theme inline {
@@ -84,8 +126,11 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -102,6 +147,9 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-warn: var(--warn);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -115,20 +163,44 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --color-gain: var(--gain);
-  --color-loss: var(--loss);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "tnum" 0;
+    -webkit-font-smoothing: antialiased;
   }
-  /* Chiffres alignés dans les tableaux financiers */
+
+  /* Les chiffres d'un tableau financier doivent s'aligner en colonne. */
   .tabular {
     font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+@layer components {
+  /* Micro-libellé au-dessus d'une valeur : discret, mais qui structure. */
+  .label-eyebrow {
+    @apply text-[0.6875rem] font-medium tracking-[0.08em] text-muted-foreground uppercase;
+  }
+
+  /* Chiffre de tête : gros, serré, tabulaire. */
+  .metric {
+    @apply text-[1.75rem] leading-[1.1] font-semibold tracking-[-0.02em] tabular-nums;
+  }
+
+  .metric-lg {
+    @apply text-[2.25rem] leading-[1.05] font-semibold tracking-[-0.025em] tabular-nums;
+  }
+
+  /* Surface de carte : profondeur douce plutôt qu'un simple contour. */
+  .surface-card {
+    background: var(--card);
+    box-shadow: var(--shadow-card), var(--hairline);
+    @apply border-border/70 rounded-lg border;
   }
 }

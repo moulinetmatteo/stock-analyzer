@@ -7,11 +7,10 @@ import { WATCHLIST, type PeriodKey } from "@/lib/market/constants";
 import { signalBadge } from "@/lib/market/indicators";
 import { toChartPoints } from "@/lib/market/to-chart";
 import { SignalBadge, RsiPill } from "@/components/signal-badge";
-import { StatCard } from "@/components/stat-card";
+import { StatCard, PageHeader, SectionTitle } from "@/components/stat-card";
 import { PeriodPicker } from "@/components/period-picker";
 import { TickerPicker } from "@/components/ticker-picker";
 import { AnalysisCharts } from "./analysis-charts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtEur, fmtPct, fmtCap, fmtNum } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
 
@@ -73,18 +72,16 @@ export default async function AnalysePage({
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{label}</h1>
-          <p className="mt-1 font-mono text-sm text-muted-foreground">
-            {ticker} · {s.currency}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <TickerPicker universe={universe} current={ticker} />
-          <PeriodPicker current={period} />
-        </div>
-      </header>
+      <PageHeader
+        title={label}
+        description={`${ticker} · coté en ${s.currency}`}
+        actions={
+          <>
+            <TickerPicker universe={universe} current={ticker} />
+            <PeriodPicker current={period} />
+          </>
+        }
+      />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
@@ -93,9 +90,9 @@ export default async function AnalysePage({
           delta={fmtPct(change)}
           deltaTone={change > 0 ? "gain" : change < 0 ? "loss" : "muted"}
         />
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">RSI (14)</p>
-          <p className="mt-1.5 text-2xl font-semibold">
+        <div className="surface-card p-4">
+          <p className="label-eyebrow">RSI (14)</p>
+          <p className="metric mt-2">
             <RsiPill value={rsiV} />
           </p>
         </div>
@@ -114,10 +111,10 @@ export default async function AnalysePage({
           }
           hint={ema50 !== null && ema200 !== null ? "croisement long terme" : undefined}
         />
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Signal global</p>
-          <div className="mt-2.5">
-            <SignalBadge label={sig.label} />
+        <div className="surface-card flex flex-col p-4">
+          <p className="label-eyebrow">Signal global</p>
+          <div className="mt-auto pt-3">
+            <SignalBadge label={sig.label} className="text-sm px-2.5 py-1" />
           </div>
         </div>
       </div>
@@ -125,11 +122,9 @@ export default async function AnalysePage({
       <AnalysisCharts points={points} />
 
       {fund && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Données fondamentales</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <section className="surface-card p-5">
+          <SectionTitle aside={`Secteur : ${fund.sector}`}>Données fondamentales</SectionTitle>
+          <div>
             <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-6">
               <Fund label="Capitalisation" value={fmtCap(fund.marketCap, eurusd)} />
               <Fund label="P/E ratio" value={fund.peRatio ? fmtNum(fund.peRatio, 1) : "—"} />
@@ -147,18 +142,16 @@ export default async function AnalysePage({
                 value={fund.fiftyTwoWeekLow ? fmtEur(fund.fiftyTwoWeekLow * fx) : "—"}
               />
             </dl>
-            <p className="mt-4 text-xs text-muted-foreground">
-              Secteur : {fund.sector} · Devise d&apos;origine : {fund.currency}
+            <p className="text-muted-foreground mt-4 text-xs">
+              Devise d&apos;origine : {fund.currency} · convertie au taux du jour
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Comment lire ces indicateurs</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-muted-foreground">
+      <section className="surface-card p-5">
+        <SectionTitle>Comment lire ces indicateurs</SectionTitle>
+        <div className="text-muted-foreground space-y-2 text-sm">
           <p>
             <strong className="text-foreground">RSI</strong> — sous 30 le titre est
             survendu (achat potentiel), au-dessus de 70 suracheté.
@@ -184,15 +177,13 @@ export default async function AnalysePage({
             Trois indicateurs alignés donnent un signal fort. Ces outils restent une aide
             à la décision : n&apos;investis jamais plus que ce que tu peux perdre.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {news.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Actualités récentes</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <section className="surface-card p-5">
+          <SectionTitle aside={`${news.length} article(s)`}>Actualités récentes</SectionTitle>
+          <div>
             <ul className="divide-y">
               {news.slice(0, 6).map((n, idx) => (
                 <li key={idx} className="py-3 first:pt-0 last:pb-0">
@@ -220,8 +211,8 @@ export default async function AnalysePage({
                 </li>
               ))}
             </ul>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       )}
     </div>
   );

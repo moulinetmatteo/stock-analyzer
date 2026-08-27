@@ -203,8 +203,12 @@ export async function parseCsvAction(formData: FormData): Promise<ParseResult> {
   let rows: ParsedRow[] = [];
 
   if (has("category", "type", "shares", "price", "symbol")) {
-    // ── Scalable Capital ──────────────────────────────────────────────────────
-    broker = "Scalable Capital";
+    // ── Trade Republic / Scalable Capital ─────────────────────────────────────
+    // Les deux néobrokers exportent le même schéma ; `mcc_code` et
+    // `payment_reference` n'apparaissent que chez Trade Republic.
+    broker = has("mcc_code") || has("payment_reference")
+      ? "Trade Republic"
+      : "Trade Republic / Scalable Capital";
     rows = body
       .filter((r) => cell(r, "category") === "TRADING")
       .filter((r) => ["BUY", "SELL"].includes(cell(r, "type")))
@@ -291,19 +295,23 @@ export async function parseCsvAction(formData: FormData): Promise<ParseResult> {
 
 export async function convertIsinsAction(rows: ParsedRow[]): Promise<ParsedRow[]> {
   await requireUser();
-  const cache = new Map<string, string>();
 
-  for (const r of rows) {
-    if (!r.isIsin) continue;
-    const key = r.ticker;
-    if (!cache.has(key)) cache.set(key, await isinToYahoo(key));
-    const resolved = cache.get(key)!;
-    if (resolved !== key) {
-      r.ticker = resolved.toUpperCase();
-      r.isIsin = false;
-    }
+  // Un même ISIN revient sur des dizaines de lignes : on ne l'interroge qu'une fois.
+  const unique = [...new Set(rows.filter((r) => r.isIsin).map((r) => r.ticker))];
+  const resolved = new Map<string, string>();
+  for (const isin of unique) {
+    resolved.set(isin, await isinToYahoo(isin));
   }
-  return rows;
+
+  // On renvoie de nouveaux objets plutôt que de muter ceux reçus : React
+  // déduplique les valeurs qui traversent la frontière serveur/client, et rendrait
+  // au client ses propres objets d'origine — les mutations seraient invisibles.
+  return rows.map((r) => {
+    if (!r.isIsin) return r;
+    const hit = resolved.get(r.ticker);
+    if (!hit || hit === r.ticker) return r;
+    return { ...r, ticker: hit.toUpperCase(), isIsin: false };
+  });
 }
 
 export async function importRowsAction(rows: ParsedRow[]): Promise<ActionResult> {

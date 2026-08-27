@@ -72,8 +72,9 @@ export function CsvImport({ onDone }: { onDone: () => void }) {
         <div>
           <p className="text-sm font-medium">Importer un relevé</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Formats reconnus : Scalable Capital, Degiro, ou un CSV générique avec les
-            colonnes <code className="text-xs">date, ticker, action, quantite, prix</code>.
+            Formats reconnus : Trade Republic, Scalable Capital, Degiro, ou un CSV
+            générique avec les colonnes{" "}
+            <code className="text-xs">date, ticker, action, quantite, prix</code>.
           </p>
         </div>
 

@@ -2,12 +2,9 @@
 
 import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import {
-  CartesianGrid, Line, LineChart, ReferenceLine,
-  ResponsiveContainer, Tooltip, XAxis, YAxis,
-} from "recharts";
+import { CartesianGrid, Line, LineChart, ReferenceLine, XAxis, YAxis } from "recharts";
+import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { X } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -15,6 +12,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { RsiPill } from "@/components/signal-badge";
+import { SectionTitle } from "@/components/stat-card";
 import { fmtEur, fmtPct, fmtNum, pnlColor, cn } from "@/lib/utils";
 
 export type CompareSeries = {
@@ -121,37 +119,38 @@ export function ComparisonView({
         </p>
       ) : (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Performance relative (base 100)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={340}>
-                <LineChart data={merged} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
-                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+          <section className="surface-card p-5">
+            <SectionTitle aside="base 100 au départ">Performance relative</SectionTitle>
+            <div>
+              <ChartContainer config={{}} className="aspect-auto h-[320px] w-full">
+                <LineChart data={merged} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <CartesianGrid vertical={false} />
                   <XAxis
                     dataKey="date"
                     tickFormatter={fmtDate}
-                    tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                    minTickGap={40}
+                    tick={{ fontSize: 11 }}
+                    minTickGap={44}
                     axisLine={false}
                     tickLine={false}
+                    tickMargin={8}
                   />
                   <YAxis
-                    tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                    width={48}
+                    tick={{ fontSize: 11 }}
+                    width={46}
                     axisLine={false}
                     tickLine={false}
+                    tickMargin={6}
                     domain={["auto", "auto"]}
                   />
-                  <ReferenceLine y={100} stroke="var(--muted-foreground)" strokeDasharray="3 3" />
-                  <Tooltip
+                  <ReferenceLine y={100} stroke="var(--border)" strokeDasharray="3 3" />
+                  <ChartTooltip
+                    cursor={{ strokeDasharray: "3 3" }}
                     content={({ active, payload, label }) => {
                       if (!active || !payload?.length) return null;
                       return (
-                        <div className="rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
+                        <div className="border-border/50 bg-popover rounded-lg border px-2.5 py-2 text-xs shadow-xl">
                           <p className="mb-1 font-medium">{fmtDate(String(label))}</p>
-                          <ul className="space-y-0.5 tabular">
+                          <ul className="space-y-0.5 tabular-nums">
                             {payload.map((p) => {
                               const key = String(p.dataKey);
                               const s = series.find((x) => x.ticker === key);
@@ -182,15 +181,13 @@ export function ComparisonView({
                     />
                   ))}
                 </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+              </ChartContainer>
+            </div>
+          </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Récapitulatif</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <section className="surface-card p-5">
+            <SectionTitle>Récapitulatif</SectionTitle>
+            <div>
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -225,8 +222,8 @@ export function ComparisonView({
                   </TableBody>
                 </Table>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
         </>
       )}
     </div>

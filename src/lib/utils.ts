@@ -17,7 +17,8 @@ export function fmtEur(v: number | null | undefined, digits = 2): string {
 
 export function fmtPct(v: number | null | undefined, digits = 2): string {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return `${v >= 0 ? "+" : ""}${v.toFixed(digits)}%`;
+  // Espace insécable avant le %, comme le veut la typographie française.
+  return `${v >= 0 ? "+" : ""}${v.toFixed(digits)}\u00a0%`;
 }
 
 export function fmtNum(v: number | null | undefined, digits = 2): string {

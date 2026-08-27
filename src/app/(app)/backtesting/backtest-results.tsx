@@ -1,11 +1,8 @@
 "use client";
 
-import {
-  CartesianGrid, ComposedChart, Line, ResponsiveContainer,
-  Scatter, Tooltip, XAxis, YAxis,
-} from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatCard, StatGrid } from "@/components/stat-card";
+import { CartesianGrid, ComposedChart, Line, Scatter, XAxis, YAxis } from "recharts";
+import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
+import { StatCard, StatGrid, SectionTitle } from "@/components/stat-card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -72,41 +69,37 @@ export function BacktestResults({
         />
       </StatGrid>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Courbe de capital — {label}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={340}>
-            <ComposedChart
-              data={result.equity}
-              margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
-            >
-              <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+      <section className="surface-card p-5">
+        <SectionTitle aside={label}>Courbe de capital</SectionTitle>
+        <div>
+          <ChartContainer config={{}} className="aspect-auto h-[320px] w-full">
+            <ComposedChart data={result.equity} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <CartesianGrid vertical={false} />
               <XAxis
                 dataKey="date"
                 tickFormatter={fmtDate}
-                tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                minTickGap={40}
+                tick={{ fontSize: 11 }}
+                minTickGap={44}
                 axisLine={false}
                 tickLine={false}
+                tickMargin={8}
               />
               <YAxis
-                tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                tick={{ fontSize: 11 }}
                 tickFormatter={(v: number) => fmtNum(v, 0)}
-                width={62}
+                width={58}
                 axisLine={false}
                 tickLine={false}
+                tickMargin={6}
                 domain={["auto", "auto"]}
               />
-              <Tooltip
+              <ChartTooltip
+                cursor={{ strokeDasharray: "3 3" }}
                 content={({ active, payload, label: l }) =>
                   active && payload?.length ? (
-                    <div className="rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
+                    <div className="border-border/50 bg-popover rounded-lg border px-2.5 py-2 text-xs shadow-xl">
                       <p className="mb-1 font-medium">{fmtDate(String(l))}</p>
-                      <ul className="space-y-0.5 tabular">
+                      <ul className="space-y-0.5 tabular-nums">
                         {payload.map((p) => (
                           <li key={String(p.dataKey)} className="flex justify-between gap-4">
                             <span style={{ color: p.color }}>
@@ -150,7 +143,7 @@ export function BacktestResults({
                 isAnimationActive={false}
               />
             </ComposedChart>
-          </ResponsiveContainer>
+          </ChartContainer>
           <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
             <Legend color="var(--gain)" label="Stratégie" />
             <Legend color="var(--muted-foreground)" label="Buy & hold" dashed />
@@ -161,17 +154,13 @@ export function BacktestResults({
               <span className="text-[var(--loss)]">◆</span> vente
             </span>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {result.trades.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Trades exécutés ({result.trades.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <section className="surface-card p-5">
+          <SectionTitle aside={`${result.trades.length} opération(s)`}>Trades exécutés</SectionTitle>
+          <div>
             <div className="max-h-96 overflow-auto rounded-lg border">
               <Table>
                 <TableHeader className="sticky top-0 bg-card">
@@ -213,8 +202,8 @@ export function BacktestResults({
                 </TableBody>
               </Table>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       ) : (
         <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
           Aucun trade déclenché avec ces paramètres — élargis les seuils RSI ou

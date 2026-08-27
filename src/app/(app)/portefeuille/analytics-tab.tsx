@@ -3,22 +3,29 @@
 import { useMemo } from "react";
 import {
   Area, AreaChart, CartesianGrid, Cell, Pie, PieChart,
-  ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  ReferenceLine, XAxis, YAxis,
 } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatCard, StatGrid } from "@/components/stat-card";
+import {
+  ChartContainer, ChartTooltip, type ChartConfig,
+} from "@/components/ui/chart";
+import { StatCard, StatGrid, SectionTitle } from "@/components/stat-card";
 import { fmtEur, fmtPct, fmtNum } from "@/lib/utils";
 
 export type PortfolioPoint = { date: string; value: number };
 
-const COLORS = [
+const SLICE_COLORS = [
   "var(--chart-1)", "var(--chart-2)", "var(--chart-3)",
   "var(--chart-4)", "var(--chart-5)",
 ];
 
+const valueConfig = { value: { label: "Valeur", color: "var(--gain)" } } satisfies ChartConfig;
+const ddConfig = { dd: { label: "Drawdown", color: "var(--loss)" } } satisfies ChartConfig;
+
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
 }
+
+const axisTick = { fontSize: 11 } as const;
 
 export function AnalyticsTab({
   curve,
@@ -54,22 +61,23 @@ export function AnalyticsTab({
     let peak = values[0];
     const drawdown = values.map((v) => {
       peak = Math.max(peak, v);
-      return { value: peak > 0 ? ((v - peak) / peak) * 100 : 0 };
+      return peak > 0 ? ((v - peak) / peak) * 100 : 0;
     });
-    const maxDd = Math.min(...drawdown.map((d) => d.value));
 
     return {
-      annVol, totalRet, annRet, sharpe, maxDd,
-      drawdown: curve.map((c, i) => ({ date: c.date, dd: drawdown[i].value })),
+      annVol, totalRet, annRet, sharpe,
+      maxDd: Math.min(...drawdown),
+      drawdown: curve.map((c, i) => ({ date: c.date, dd: drawdown[i] })),
       alpha: spyPerf !== null ? totalRet - spyPerf : null,
     };
   }, [curve, spyPerf]);
 
   const totalAlloc = allocation.reduce((a, p) => a + p.value, 0);
+  const sorted = [...allocation].sort((a, b) => b.value - a.value);
 
   if (!curve.length) {
     return (
-      <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+      <p className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">
         Ajoute des positions pour voir l&apos;analyse du portefeuille.
       </p>
     );
@@ -81,213 +89,175 @@ export function AnalyticsTab({
         <StatGrid>
           <StatCard
             label="Volatilité annualisée"
-            value={`${fmtNum(metrics.annVol, 1)}%`}
+            value={`${fmtNum(metrics.annVol, 1)}\u00a0%`}
             hint="dispersion des rendements"
           />
           <StatCard
             label="Ratio de Sharpe"
             value={fmtNum(metrics.sharpe, 2)}
-            hint="> 1 bon · > 2 excellent"
+            hint="au-delà de 1 c'est bon, de 2 excellent"
             deltaTone={metrics.sharpe > 1 ? "gain" : metrics.sharpe < 0 ? "loss" : "muted"}
           />
           <StatCard
             label="Drawdown maximum"
-            value={`${fmtNum(metrics.maxDd, 1)}%`}
+            value={`${fmtNum(metrics.maxDd, 1)}\u00a0%`}
             hint="pire baisse depuis un sommet"
           />
           <StatCard
-            label="vs S&P 500"
+            label="Écart vs S&P 500"
             value={metrics.alpha !== null ? fmtPct(metrics.alpha) : "—"}
             delta={
               spyPerf !== null
-                ? `Portef. ${fmtPct(metrics.totalRet)} · SPY ${fmtPct(spyPerf)}`
+                ? `${fmtPct(metrics.totalRet)} contre ${fmtPct(spyPerf)}`
                 : undefined
             }
-            deltaTone={
-              metrics.alpha === null ? "muted" : metrics.alpha > 0 ? "gain" : "loss"
-            }
+            deltaTone={metrics.alpha === null ? "muted" : metrics.alpha > 0 ? "gain" : "loss"}
           />
         </StatGrid>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Évolution de la valeur</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={curve} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
-              <defs>
-                <linearGradient id="pv" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--gain)" stopOpacity={0.28} />
-                  <stop offset="100%" stopColor="var(--gain)" stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="date"
-                tickFormatter={fmtDate}
-                tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                minTickGap={40}
-                axisLine={false}
-                tickLine={false}
+      <section className="surface-card p-5">
+        <SectionTitle aside={invested > 0 ? `investi ${fmtEur(invested)}` : undefined}>
+          Évolution de la valeur
+        </SectionTitle>
+        <ChartContainer config={valueConfig} className="aspect-auto h-[280px] w-full">
+          <AreaChart data={curve} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id="fillValue" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--color-value)" stopOpacity={0.35} />
+                <stop offset="95%" stopColor="var(--color-value)" stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} />
+            <XAxis
+              dataKey="date" tickFormatter={fmtDate} tick={axisTick}
+              tickLine={false} axisLine={false} tickMargin={8} minTickGap={44}
+            />
+            <YAxis
+              tick={axisTick} tickLine={false} axisLine={false} tickMargin={6} width={58}
+              tickFormatter={(v: number) => fmtNum(v, 0)}
+              domain={["auto", "auto"]}
+            />
+            {invested > 0 && (
+              <ReferenceLine
+                y={invested} stroke="var(--warn)" strokeDasharray="4 3" strokeOpacity={0.7}
               />
-              <YAxis
-                tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                tickFormatter={(v: number) => fmtNum(v, 0)}
-                width={64}
-                axisLine={false}
-                tickLine={false}
-              />
-              {invested > 0 && (
-                <ReferenceLine
-                  y={invested}
-                  stroke="var(--chart-5)"
-                  strokeDasharray="4 3"
-                  label={{
-                    value: "Investi",
-                    position: "insideTopRight",
-                    fill: "var(--chart-5)",
-                    fontSize: 11,
-                  }}
-                />
-              )}
-              <Tooltip
-                content={({ active, payload, label }) =>
+            )}
+            <ChartTooltip
+              cursor={{ strokeDasharray: "3 3" }}
+              content={({ active, payload, label }) =>
+                active && payload?.length ? (
+                  <div className="border-border/50 bg-popover rounded-lg border px-2.5 py-2 text-xs shadow-xl">
+                    <p className="mb-0.5 font-medium">{fmtDate(String(label))}</p>
+                    <p className="tabular-nums">{fmtEur(Number(payload[0].value))}</p>
+                  </div>
+                ) : null
+              }
+            />
+            <Area
+              dataKey="value" type="monotone" stroke="var(--color-value)"
+              strokeWidth={2} fill="url(#fillValue)" isAnimationActive={false}
+            />
+          </AreaChart>
+        </ChartContainer>
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="surface-card p-5">
+          <SectionTitle aside={`${allocation.length} ligne(s)`}>Répartition</SectionTitle>
+          <ChartContainer
+            config={{}}
+            className="mx-auto aspect-square h-[210px]"
+          >
+            <PieChart>
+              <ChartTooltip
+                content={({ active, payload }) =>
                   active && payload?.length ? (
-                    <div className="rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
-                      <p className="font-medium">{fmtDate(String(label))}</p>
-                      <p className="tabular">{fmtEur(Number(payload[0].value))}</p>
+                    <div className="border-border/50 bg-popover rounded-lg border px-2.5 py-2 text-xs shadow-xl">
+                      <p className="font-medium">{payload[0].name}</p>
+                      <p className="tabular-nums">
+                        {fmtEur(Number(payload[0].value))} ·{" "}
+                        {fmtNum((Number(payload[0].value) / totalAlloc) * 100, 1)}&nbsp;%
+                      </p>
                     </div>
                   ) : null
                 }
               />
-              <Area
-                dataKey="value"
-                stroke="var(--gain)"
-                strokeWidth={2}
-                fill="url(#pv)"
+              <Pie
+                data={sorted} dataKey="value" nameKey="nom"
+                innerRadius={58} outerRadius={92} paddingAngle={2} strokeWidth={0}
                 isAnimationActive={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+              >
+                {sorted.map((_, i) => (
+                  <Cell key={i} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ChartContainer>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Répartition</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie
-                  data={allocation}
-                  dataKey="value"
-                  nameKey="nom"
-                  innerRadius={58}
-                  outerRadius={96}
-                  paddingAngle={2}
-                  isAnimationActive={false}
-                >
-                  {allocation.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  content={({ active, payload }) =>
+          <ul className="mt-4 space-y-1.5">
+            {sorted.map((a, i) => (
+              <li key={a.nom} className="flex items-center justify-between text-sm">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="size-2.5 shrink-0 rounded-sm"
+                    style={{ backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length] }}
+                  />
+                  <span className="truncate">{a.nom}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-3">
+                  <span className="text-muted-foreground tabular text-xs">{fmtEur(a.value)}</span>
+                  <span className="tabular w-14 shrink-0 text-right font-medium whitespace-nowrap">
+                    {fmtNum((a.value / totalAlloc) * 100, 1)}&nbsp;%
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {metrics && (
+          <section className="surface-card p-5">
+            <SectionTitle aside={`pire : ${fmtNum(metrics.maxDd, 1)}\u00a0%`}>
+              Drawdown
+            </SectionTitle>
+            <ChartContainer config={ddConfig} className="aspect-auto h-[280px] w-full">
+              <AreaChart data={metrics.drawdown} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="fillDd" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-dd)" stopOpacity={0.05} />
+                    <stop offset="95%" stopColor="var(--color-dd)" stopOpacity={0.35} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="date" tickFormatter={fmtDate} tick={axisTick}
+                  tickLine={false} axisLine={false} tickMargin={8} minTickGap={44}
+                />
+                <YAxis
+                  tick={axisTick} tickLine={false} axisLine={false} tickMargin={6} width={46}
+                  tickFormatter={(v: number) => `${v.toFixed(0)}\u00a0%`}
+                />
+                <ChartTooltip
+                  cursor={{ strokeDasharray: "3 3" }}
+                  content={({ active, payload, label }) =>
                     active && payload?.length ? (
-                      <div className="rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
-                        <p className="font-medium">{payload[0].name}</p>
-                        <p className="tabular">
-                          {fmtEur(Number(payload[0].value))} ·{" "}
-                          {fmtNum((Number(payload[0].value) / totalAlloc) * 100, 1)}%
+                      <div className="border-border/50 bg-popover rounded-lg border px-2.5 py-2 text-xs shadow-xl">
+                        <p className="mb-0.5 font-medium">{fmtDate(String(label))}</p>
+                        <p className="tabular-nums" style={{ color: "var(--loss)" }}>
+                          {fmtNum(Number(payload[0].value), 2)}&nbsp;%
                         </p>
                       </div>
                     ) : null
                   }
                 />
-              </PieChart>
-            </ResponsiveContainer>
-            <ul className="mt-3 space-y-1.5">
-              {allocation
-                .slice()
-                .sort((a, b) => b.value - a.value)
-                .map((a, i) => (
-                  <li key={a.nom} className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="size-2.5 rounded-sm"
-                        style={{ backgroundColor: COLORS[i % COLORS.length] }}
-                      />
-                      {a.nom}
-                    </span>
-                    <span className="tabular text-muted-foreground">
-                      {fmtNum((a.value / totalAlloc) * 100, 1)}%
-                    </span>
-                  </li>
-                ))}
-            </ul>
-          </CardContent>
-        </Card>
-
-        {metrics && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Drawdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={260}>
-                <AreaChart
-                  data={metrics.drawdown}
-                  margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
-                >
-                  <defs>
-                    <linearGradient id="dd" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--loss)" stopOpacity={0.05} />
-                      <stop offset="100%" stopColor="var(--loss)" stopOpacity={0.3} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={fmtDate}
-                    tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                    minTickGap={40}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                    tickFormatter={(v: number) => `${v.toFixed(0)}%`}
-                    width={48}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    content={({ active, payload, label }) =>
-                      active && payload?.length ? (
-                        <div className="rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
-                          <p className="font-medium">{fmtDate(String(label))}</p>
-                          <p className="tabular text-[var(--loss)]">
-                            {fmtNum(Number(payload[0].value), 2)}%
-                          </p>
-                        </div>
-                      ) : null
-                    }
-                  />
-                  <Area
-                    dataKey="dd"
-                    stroke="var(--loss)"
-                    strokeWidth={1.5}
-                    fill="url(#dd)"
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+                <Area
+                  dataKey="dd" type="monotone" stroke="var(--color-dd)"
+                  strokeWidth={1.5} fill="url(#fillDd)" isAnimationActive={false}
+                />
+              </AreaChart>
+            </ChartContainer>
+          </section>
         )}
       </div>
     </div>

@@ -7,7 +7,7 @@ import { WATCHLIST, WATCHLIST_BY_TICKER } from "@/lib/market/constants";
 import { StatCard, StatGrid, PageHeader, SectionTitle } from "@/components/stat-card";
 import { RsiPill, DeltaText } from "@/components/signal-badge";
 import { Heatmap } from "@/components/heatmap";
-import { fmtEur } from "@/lib/utils";
+import { fmtEur, fmtPct } from "@/lib/utils";
 import { ArrowDown, ArrowUp, Bell, CalendarDays } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -79,7 +79,7 @@ export default async function DashboardPage() {
             label="Plus / moins-value"
             value={fmtEur(pnl)}
             size="lg"
-            delta={`${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)} %`}
+            delta={fmtPct(pnlPct)}
             deltaTone={pnl > 0 ? "gain" : pnl < 0 ? "loss" : "muted"}
           />
           <StatCard

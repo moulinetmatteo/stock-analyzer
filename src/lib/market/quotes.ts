@@ -168,8 +168,37 @@ export type Fundamentals = {
   fiftyTwoWeekHigh: number | null;
   fiftyTwoWeekLow: number | null;
   sector: string;
+  industry: string;
   currency: string;
   longName: string;
+
+  // Rentabilité — ce que l'entreprise garde de ce qu'elle vend.
+  grossMargin: number | null;
+  operatingMargin: number | null;
+  netMargin: number | null;
+  returnOnEquity: number | null;
+
+  // Croissance, sur les douze derniers mois.
+  revenueGrowth: number | null;
+  earningsGrowth: number | null;
+
+  // Solidité du bilan.
+  debtToEquity: number | null;
+  currentRatio: number | null;
+  totalCash: number | null;
+  totalDebt: number | null;
+  freeCashflow: number | null;
+
+  // Valorisation.
+  forwardPE: number | null;
+  pegRatio: number | null;
+  priceToSales: number | null;
+  priceToBook: number | null;
+
+  // Consensus des analystes.
+  recommendation: string | null;
+  analystCount: number | null;
+  targetMean: number | null;
 };
 
 export async function getFundamentals(ticker: string): Promise<Fundamentals | null> {
@@ -177,20 +206,55 @@ export async function getFundamentals(ticker: string): Promise<Fundamentals | nu
     const [q, summary] = await Promise.all([
       yahooFinance.quote(ticker),
       yahooFinance
-        .quoteSummary(ticker, { modules: ["summaryProfile", "defaultKeyStatistics"] })
+        .quoteSummary(ticker, {
+          modules: [
+            "summaryProfile", "defaultKeyStatistics", "financialData", "summaryDetail",
+          ],
+        })
         .catch(() => null),
     ]);
     if (!q) return null;
+
+    const prof = summary?.summaryProfile;
+    const ks = summary?.defaultKeyStatistics;
+    const fd = summary?.financialData;
+    const sd = summary?.summaryDetail;
+    const n = (v: number | undefined | null) => (v === undefined ? null : v);
+
     return {
       marketCap: q.marketCap ?? null,
-      peRatio: q.trailingPE ?? null,
+      peRatio: q.trailingPE ?? n(sd?.trailingPE),
       dividendYield: q.dividendYield ?? null,
-      beta: summary?.defaultKeyStatistics?.beta ?? null,
+      beta: n(ks?.beta) ?? n(sd?.beta),
       fiftyTwoWeekHigh: q.fiftyTwoWeekHigh ?? null,
       fiftyTwoWeekLow: q.fiftyTwoWeekLow ?? null,
-      sector: summary?.summaryProfile?.sector ?? "—",
+      sector: prof?.sector ?? "—",
+      industry: prof?.industry ?? "—",
       currency: q.currency ?? "",
       longName: q.longName ?? q.shortName ?? ticker,
+
+      grossMargin: n(fd?.grossMargins),
+      operatingMargin: n(fd?.operatingMargins),
+      netMargin: n(fd?.profitMargins),
+      returnOnEquity: n(fd?.returnOnEquity),
+
+      revenueGrowth: n(fd?.revenueGrowth),
+      earningsGrowth: n(fd?.earningsGrowth),
+
+      debtToEquity: n(fd?.debtToEquity),
+      currentRatio: n(fd?.currentRatio),
+      totalCash: n(fd?.totalCash),
+      totalDebt: n(fd?.totalDebt),
+      freeCashflow: n(fd?.freeCashflow),
+
+      forwardPE: n(sd?.forwardPE) ?? n(ks?.forwardPE),
+      pegRatio: n(ks?.pegRatio),
+      priceToSales: n(sd?.priceToSalesTrailing12Months),
+      priceToBook: n(ks?.priceToBook),
+
+      recommendation: fd?.recommendationKey ?? null,
+      analystCount: n(fd?.numberOfAnalystOpinions),
+      targetMean: n(fd?.targetMeanPrice),
     };
   } catch {
     return null;

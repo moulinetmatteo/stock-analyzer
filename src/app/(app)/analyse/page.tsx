@@ -12,6 +12,7 @@ import { PeriodPicker } from "@/components/period-picker";
 import { TickerPicker } from "@/components/ticker-picker";
 import { AnalysisCharts } from "./analysis-charts";
 import { AiAnalysis } from "@/components/ai-analysis";
+import { FundamentalsSheet } from "@/components/fundamentals-sheet";
 import { fmtEur, fmtPct, fmtCap, fmtNum } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
 
@@ -125,31 +126,7 @@ export default async function AnalysePage({
       <AiAnalysis ticker={ticker} period={period} label={label} />
 
       {fund && (
-        <section className="surface-card p-5">
-          <SectionTitle aside={`Secteur : ${fund.sector}`}>Données fondamentales</SectionTitle>
-          <div>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-6">
-              <Fund label="Capitalisation" value={fmtCap(fund.marketCap, eurusd)} />
-              <Fund label="P/E ratio" value={fund.peRatio ? fmtNum(fund.peRatio, 1) : "—"} />
-              <Fund
-                label="Dividende"
-                value={fund.dividendYield ? `${fund.dividendYield.toFixed(2)}%` : "—"}
-              />
-              <Fund label="Beta" value={fund.beta ? fmtNum(fund.beta, 2) : "—"} />
-              <Fund
-                label="52s haut"
-                value={fund.fiftyTwoWeekHigh ? fmtEur(fund.fiftyTwoWeekHigh * fx) : "—"}
-              />
-              <Fund
-                label="52s bas"
-                value={fund.fiftyTwoWeekLow ? fmtEur(fund.fiftyTwoWeekLow * fx) : "—"}
-              />
-            </dl>
-            <p className="text-muted-foreground mt-4 text-xs">
-              Devise d&apos;origine : {fund.currency} · convertie au taux du jour
-            </p>
-          </div>
-        </section>
+        <FundamentalsSheet fund={fund} eurusd={eurusd} fx={fx} priceEur={priceEur} />
       )}
 
       <section className="surface-card p-5">
@@ -221,11 +198,3 @@ export default async function AnalysePage({
   );
 }
 
-function Fund({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 tabular font-medium">{value}</dd>
-    </div>
-  );
-}

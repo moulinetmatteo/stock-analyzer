@@ -2,7 +2,7 @@ import { requireUser } from "@/lib/auth";
 import {
   getPortfolio, getTransactions, getJournal, getCustomWatchlist,
 } from "@/lib/data";
-import { getEurUsd, getSnapshots, getSeries } from "@/lib/market/quotes";
+import { getEurUsd, getSnapshots, getSeries, getQuoteTypes } from "@/lib/market/quotes";
 import {
   buildHistory, timeWeightedReturn, internalRateOfReturn, replayOnBenchmark,
   performanceIndex, annualisedVolatility, drawdownSeries,
@@ -14,6 +14,8 @@ import { PositionsTab } from "./positions-tab";
 import { TransactionsTab } from "./transactions-tab";
 import { AnalyticsTab, type PortfolioPoint } from "./analytics-tab";
 import { JournalTab } from "./journal-tab";
+import { PicksTab, type PickLine } from "./picks-tab";
+import { classify } from "@/lib/portfolio/picks";
 import { PageHeader } from "@/components/stat-card";
 
 export const dynamic = "force-dynamic";
@@ -120,6 +122,55 @@ export default async function PortefeuillePage() {
     );
   }
 
+  // ── Sélection en direct contre indice ───────────────────────────────────────
+  const kinds = await getQuoteTypes(tickersHistoriques);
+  const isPick = (ticker: string) => {
+    const k = kinds.get(ticker);
+    return classify(k?.quoteType ?? null, k?.name ?? ticker) === "action";
+  };
+
+  const spyPrices = spy
+    ? new Map(
+        spy.candles.map((c) => [
+          c.date,
+          c.close * (spy.currency === "EUR" ? 1 : 1 / eurusd),
+        ]),
+      )
+    : null;
+
+  const picks: PickLine[] = [];
+  let fundsInvested = 0;
+  let fundsValue = 0;
+
+  for (const p of portfolio) {
+    const priced = rows.find((r) => r.ticker === p.ticker);
+    const value = priced?.value ?? 0;
+
+    // Chaque ligne est reconstruite depuis ses propres transactions : le PRU
+    // moyen ne suffit pas pour rejouer les versements aux bonnes dates.
+    const lineTxs = ledger.filter((t) => t.ticker === p.ticker);
+    const lineHistory = buildHistory(
+      lineTxs,
+      new Map([[p.ticker, priceMaps.get(p.ticker) ?? new Map()]]),
+    );
+    const invested = lineHistory.at(-1)?.invested ?? p.quantite * p.prix_achat;
+
+    if (!isPick(p.ticker)) {
+      fundsInvested += invested;
+      fundsValue += value;
+      continue;
+    }
+
+    const replayed = spyPrices ? replayOnBenchmark(lineHistory, spyPrices) : null;
+    picks.push({
+      ticker: p.ticker,
+      nom: priced?.nom ?? p.nom,
+      invested,
+      value,
+      benchmarkValue: replayed?.value ?? null,
+    });
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -132,6 +183,7 @@ export default async function PortefeuillePage() {
           <TabsTrigger value="positions">Positions</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
           <TabsTrigger value="analytics">Analyse</TabsTrigger>
+          <TabsTrigger value="picks">Mes picks</TabsTrigger>
           <TabsTrigger value="journal">Journal</TabsTrigger>
         </TabsList>
 
@@ -162,6 +214,14 @@ export default async function PortefeuillePage() {
             allocation={rows
               .filter((r) => r.value !== null)
               .map((r) => ({ nom: r.nom, value: r.value! }))}
+          />
+        </TabsContent>
+
+        <TabsContent value="picks" className="pt-5">
+          <PicksTab
+            picks={picks}
+            funds={{ invested: fundsInvested, value: fundsValue }}
+            benchmarkName="le S&P 500"
           />
         </TabsContent>
 

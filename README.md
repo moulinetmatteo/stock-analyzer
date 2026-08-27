@@ -13,7 +13,7 @@ Supabase et les mêmes comptes utilisateurs.
 | **Analyse détaillée** | Chandeliers + EMA 20/50/200, Bollinger, volume, RSI, MACD, fondamentaux, actualités, et une lecture des indicateurs par Claude |
 | **Candidats** | Titres surveillés avant achat : thèse écrite à l'avance, prix visé, conviction, et l'écart depuis la mise sous surveillance |
 | **Comparaison** | Jusqu'à 5 titres en performance relative base 100 |
-| **Portefeuille** | Positions et PRU, historique, import CSV courtier, métriques de risque (volatilité, Sharpe, drawdown, alpha vs S&P 500), journal d'investissement |
+| **Portefeuille** | Positions et PRU, historique, import CSV courtier, métriques de risque reconstruites depuis le registre des transactions (volatilité, Sharpe, drawdown, TWR, TRI), comparaison à versements égaux avec le S&P 500, tableau de bord des titres choisis en direct, journal |
 | **Backtesting** | Stratégies RSI / MACD / combinée contre le buy-and-hold |
 | **Alertes** | Seuils d'achat et de vente par titre |
 | **Paramètres** | Watchlist personnalisée, notifications Telegram, suppression des données |

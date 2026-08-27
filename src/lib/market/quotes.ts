@@ -467,3 +467,36 @@ export async function isinToYahoo(isin: string): Promise<string> {
   }
   return isin;
 }
+
+export type QuoteKind = { quoteType: string | null; name: string };
+
+/**
+ * Nature et intitulé d'un titre, pour distinguer un fonds d'une action choisie.
+ * Mis en cache avec les fondamentaux : ces informations ne changent jamais.
+ */
+export async function getQuoteTypes(
+  tickers: string[],
+  concurrency = 8,
+): Promise<Map<string, QuoteKind>> {
+  const out = new Map<string, QuoteKind>();
+  const queue = [...tickers];
+
+  async function worker() {
+    for (;;) {
+      const t = queue.shift();
+      if (!t) return;
+      try {
+        const q = await yahooFinance.quote(t);
+        out.set(t, {
+          quoteType: q?.quoteType ?? null,
+          name: q?.longName ?? q?.shortName ?? t,
+        });
+      } catch {
+        out.set(t, { quoteType: null, name: t });
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, tickers.length) }, worker));
+  return out;
+}

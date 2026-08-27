@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { AlertTriangle, Check, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -67,8 +66,7 @@ export function CsvImport({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <Card>
-      <CardContent className="space-y-4 pt-6">
+    <div className="surface-card space-y-4 p-5">
         <div>
           <p className="text-sm font-medium">Importer un relevé</p>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -177,7 +175,6 @@ export function CsvImport({ onDone }: { onDone: () => void }) {
             </div>
           </>
         )}
-      </CardContent>
-    </Card>
+    </div>
   );
 }

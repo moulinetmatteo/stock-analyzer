@@ -4,7 +4,7 @@ import { useActionState, useState, useTransition } from "react";
 import { Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionTitle } from "@/components/stat-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { TelegramConfig } from "@/lib/data";
@@ -26,11 +26,11 @@ export function TelegramCard({ config }: { config: TelegramConfig | null }) {
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Notifications Telegram</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <section className="surface-card p-5">
+      <SectionTitle aside={config?.token ? "configuré" : "non configuré"}>
+        Notifications Telegram
+      </SectionTitle>
+      <div className="space-y-4">
         <ol className="list-inside list-decimal space-y-1 text-sm text-muted-foreground">
           <li>
             Dans Telegram, ouvre <strong>@BotFather</strong> et envoie{" "}
@@ -43,7 +43,7 @@ export function TelegramCard({ config }: { config: TelegramConfig | null }) {
         </ol>
 
         <form action={action} className="space-y-4">
-          <div className="space-y-2">
+          <div className="max-w-md space-y-2">
             <Label htmlFor="tg-token">Token du bot</Label>
             <Input
               id="tg-token"
@@ -54,7 +54,7 @@ export function TelegramCard({ config }: { config: TelegramConfig | null }) {
               className="font-mono text-sm"
             />
           </div>
-          <div className="space-y-2">
+          <div className="max-w-md space-y-2">
             <Label htmlFor="tg-chat">Chat ID</Label>
             <Input
               id="tg-chat"
@@ -84,7 +84,7 @@ export function TelegramCard({ config }: { config: TelegramConfig | null }) {
             </Button>
           </div>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

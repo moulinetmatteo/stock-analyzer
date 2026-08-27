@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -55,8 +54,7 @@ export function BacktestForm({
   const rsiDisabled = s.strategy === "macd";
 
   return (
-    <Card>
-      <CardContent className="space-y-5 pt-6">
+    <div className="surface-card space-y-5 p-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-2">
             <Label>Action</Label>
@@ -138,8 +136,7 @@ export function BacktestForm({
           <Play className="size-4" />
           Lancer le backtest
         </Button>
-      </CardContent>
-    </Card>
+    </div>
   );
 }
 

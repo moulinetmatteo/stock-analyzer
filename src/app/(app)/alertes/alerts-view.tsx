@@ -1,10 +1,9 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { Bell, Plus, Trash2 } from "lucide-react";
+import { Bell, BellOff, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { fmtEur, cn } from "@/lib/utils";
 import { saveAlertAction, deleteAlertAction, type ActionResult } from "./actions";
+import { EmptyState } from "@/components/empty-state";
 
 export type AlertRow = {
   ticker: string;
@@ -66,8 +66,7 @@ export function AlertsView({
   return (
     <div className="space-y-5">
       {active.length > 0 && (
-        <Card className="border-[var(--gain)]/30">
-          <CardContent className="pt-6">
+        <div className="surface-card border-[var(--gain)]/30 p-5">
             <p className="mb-3 flex items-center gap-2 text-sm font-medium">
               <Bell className="size-4" />
               {active.length} alerte{active.length > 1 ? "s" : ""} déclenchée
@@ -96,8 +95,7 @@ export function AlertsView({
                 </li>
               ))}
             </ul>
-          </CardContent>
-        </Card>
+        </div>
       )}
 
       <div>
@@ -108,8 +106,7 @@ export function AlertsView({
       </div>
 
       {open && (
-        <Card>
-          <CardContent className="pt-6">
+        <div className="surface-card p-5">
             <form action={action} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label>Action</Label>
@@ -158,14 +155,15 @@ export function AlertsView({
                 <Button type="submit" className="w-full">Enregistrer</Button>
               </div>
             </form>
-          </CardContent>
-        </Card>
+        </div>
       )}
 
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Aucune alerte configurée.
-        </p>
+        <EmptyState
+          icon={BellOff}
+          title="Aucune alerte"
+          description="Définis un seuil d'achat ou de vente sur un titre pour être prévenu quand il est franchi."
+        />
       ) : (
         <div className="overflow-x-auto rounded-lg border">
           <Table>

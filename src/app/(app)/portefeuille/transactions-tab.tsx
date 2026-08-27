@@ -1,10 +1,9 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { Plus, Trash2, Upload } from "lucide-react";
+import { Plus, Receipt, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,6 +16,7 @@ import { fmtEur, fmtNum, cn } from "@/lib/utils";
 import type { Transaction } from "@/lib/data";
 import { addTransactionAction, deleteTransactionAction, type ActionResult } from "./actions";
 import { CsvImport } from "./csv-import";
+import { EmptyState } from "@/components/empty-state";
 
 export function TransactionsTab({
   transactions,
@@ -62,8 +62,7 @@ export function TransactionsTab({
       </div>
 
       {panel === "manuel" && (
-        <Card>
-          <CardContent className="pt-6">
+        <div className="surface-card p-5">
             <form action={action} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
               <div className="space-y-2 lg:col-span-2">
                 <Label>Action</Label>
@@ -112,16 +111,17 @@ export function TransactionsTab({
                 <Button type="submit">Enregistrer la transaction</Button>
               </div>
             </form>
-          </CardContent>
-        </Card>
+        </div>
       )}
 
       {panel === "csv" && <CsvImport onDone={() => setPanel("none")} />}
 
       {transactions.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Aucune transaction enregistrée.
-        </p>
+        <EmptyState
+          icon={Receipt}
+          title="Aucune transaction"
+          description="Saisis un mouvement à la main, ou importe un CSV Trade Republic, Scalable Capital ou Degiro."
+        />
       ) : (
         <div className="overflow-x-auto rounded-lg border">
           <Table>

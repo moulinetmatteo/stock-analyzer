@@ -1,7 +1,7 @@
+import { redirect } from "next/navigation";
 import { requireUser, clearSession } from "@/lib/auth";
 import { getEurUsd } from "@/lib/market/quotes";
-import { NavSidebar } from "@/components/nav-sidebar";
-import { redirect } from "next/navigation";
+import { AppShell } from "@/components/app-shell";
 
 async function logout() {
   "use server";
@@ -18,9 +18,8 @@ export default async function AppLayout({
   const eurusd = await getEurUsd();
 
   return (
-    <div className="flex min-h-screen">
-      <NavSidebar name={user.name} eurusd={eurusd} onLogout={logout} />
-      <main className="min-w-0 flex-1 overflow-x-hidden px-8 py-7">{children}</main>
-    </div>
+    <AppShell name={user.name} eurusd={eurusd} onLogout={logout}>
+      {children}
+    </AppShell>
   );
 }

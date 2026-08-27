@@ -1,10 +1,9 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Plus, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,6 +15,7 @@ import {
 import { StatCard, StatGrid } from "@/components/stat-card";
 import { fmtEur, fmtPct, fmtNum, pnlColor, cn } from "@/lib/utils";
 import { savePositionAction, deletePositionAction, type ActionResult } from "./actions";
+import { EmptyState } from "@/components/empty-state";
 
 export type PositionRow = {
   ticker: string;
@@ -105,8 +105,7 @@ export function PositionsTab({
       </div>
 
       {open && (
-        <Card>
-          <CardContent className="pt-6">
+        <div className="surface-card p-5">
             <form action={action} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <div className="space-y-2 lg:col-span-2">
                 <Label>Action</Label>
@@ -127,15 +126,15 @@ export function PositionsTab({
             {state && !state.ok && (
               <p className="mt-3 text-sm text-destructive">{state.message}</p>
             )}
-          </CardContent>
-        </Card>
+        </div>
       )}
 
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Aucune position. Ajoutes-en une ci-dessus ou importe un CSV depuis
-          l&apos;onglet Transactions.
-        </p>
+        <EmptyState
+          icon={Wallet}
+          title="Aucune position"
+          description="Ajoute une ligne ci-dessus, ou importe le relevé de ton courtier depuis l'onglet Transactions."
+        />
       ) : (
         <div className="overflow-x-auto rounded-lg border">
           <Table>

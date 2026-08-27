@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionTitle } from "@/components/stat-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { clearDataAction } from "./actions";
@@ -35,14 +35,14 @@ export function DangerZone() {
   const armed = typed.trim().toUpperCase() === CONFIRM;
 
   return (
-    <Card className="border-destructive/40">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base text-destructive">
+    <section className="surface-card border-destructive/40 p-5">
+      <SectionTitle>
+        <span className="text-destructive inline-flex items-center gap-2">
           <AlertTriangle className="size-4" />
           Zone de danger
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
+        </span>
+      </SectionTitle>
+      <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
           Ces suppressions sont définitives et ne touchent que ton compte. Tape{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">{CONFIRM}</code> pour
@@ -81,7 +81,7 @@ export function DangerZone() {
             </div>
           ))}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

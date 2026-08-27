@@ -10,13 +10,26 @@ import {
 } from "@/components/ui/chart";
 import { StatCard, StatGrid, SectionTitle } from "@/components/stat-card";
 import { fmtEur, fmtPct, fmtNum } from "@/lib/utils";
+import { ChartLine } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 
 export type PortfolioPoint = { date: string; value: number };
 
-const SLICE_COLORS = [
-  "var(--chart-1)", "var(--chart-2)", "var(--chart-3)",
-  "var(--chart-4)", "var(--chart-5)",
-];
+/**
+ * Rampe générée plutôt que cinq couleurs qui se répètent : au-delà de cinq
+ * lignes, deux positions finissaient sinon avec la même teinte.
+ */
+function sliceColors(n: number): string[] {
+  if (n <= 5) {
+    return ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"]
+      .slice(0, n);
+  }
+  // Parcours régulier de la roue depuis le violet de la marque.
+  return Array.from({ length: n }, (_, i) => {
+    const hue = (278 + (360 / n) * i) % 360;
+    return `oklch(0.72 0.15 ${hue.toFixed(1)})`;
+  });
+}
 
 const valueConfig = { value: { label: "Valeur", color: "var(--gain)" } } satisfies ChartConfig;
 const ddConfig = { dd: { label: "Drawdown", color: "var(--loss)" } } satisfies ChartConfig;
@@ -74,12 +87,15 @@ export function AnalyticsTab({
 
   const totalAlloc = allocation.reduce((a, p) => a + p.value, 0);
   const sorted = [...allocation].sort((a, b) => b.value - a.value);
+  const palette = sliceColors(sorted.length);
 
   if (!curve.length) {
     return (
-      <p className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">
-        Ajoute des positions pour voir l&apos;analyse du portefeuille.
-      </p>
+      <EmptyState
+        icon={ChartLine}
+        title="Rien à analyser"
+        description="Les métriques de risque se calculent sur l'historique de tes positions — ajoutes-en d'abord."
+      />
     );
   }
 
@@ -189,7 +205,7 @@ export function AnalyticsTab({
                 isAnimationActive={false}
               >
                 {sorted.map((_, i) => (
-                  <Cell key={i} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />
+                  <Cell key={i} fill={palette[i]} />
                 ))}
               </Pie>
             </PieChart>
@@ -201,7 +217,7 @@ export function AnalyticsTab({
                 <span className="flex min-w-0 items-center gap-2">
                   <span
                     className="size-2.5 shrink-0 rounded-sm"
-                    style={{ backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length] }}
+                    style={{ backgroundColor: palette[i] }}
                   />
                   <span className="truncate">{a.nom}</span>
                 </span>

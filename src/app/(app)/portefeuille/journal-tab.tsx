@@ -4,12 +4,13 @@ import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fmtEur, fmtPct, pnlColor, cn } from "@/lib/utils";
 import type { JournalEntry } from "@/lib/data";
 import { saveJournalAction, type ActionResult } from "./actions";
+import { NotebookPen } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 
 type Pos = { ticker: string; nom: string; current: number | null };
 
@@ -22,10 +23,11 @@ export function JournalTab({
 }) {
   if (!positions.length) {
     return (
-      <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-        Le journal se remplit position par position — ajoute d&apos;abord une ligne au
-        portefeuille.
-      </p>
+      <EmptyState
+        icon={NotebookPen}
+        title="Journal vide"
+        description="Le journal se remplit position par position — ajoute d'abord une ligne au portefeuille."
+      />
     );
   }
 
@@ -69,8 +71,7 @@ function JournalCard({ pos, entry }: { pos: Pos; entry?: JournalEntry }) {
     target && pos.current ? ((target - pos.current) / pos.current) * 100 : null;
 
   return (
-    <Card>
-      <CardContent className="pt-6">
+    <div className="surface-card p-5">
         <form action={action} className="space-y-4">
           <input type="hidden" name="ticker" value={pos.ticker} />
 
@@ -128,7 +129,6 @@ function JournalCard({ pos, entry }: { pos: Pos; entry?: JournalEntry }) {
 
           <SaveButton />
         </form>
-      </CardContent>
-    </Card>
+    </div>
   );
 }

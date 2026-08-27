@@ -8,6 +8,8 @@ import {
 } from "@/components/ui/table";
 import { fmtEur, fmtPct, fmtNum, cn } from "@/lib/utils";
 import type { BacktestResult } from "@/lib/market/backtest";
+import { SearchX } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
@@ -205,10 +207,11 @@ export function BacktestResults({
           </div>
         </section>
       ) : (
-        <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Aucun trade déclenché avec ces paramètres — élargis les seuils RSI ou
-          allonge la période.
-        </p>
+        <EmptyState
+          icon={SearchX}
+          title="Aucun trade déclenché"
+          description="Ces paramètres ne produisent aucun signal sur la période — élargis les seuils RSI ou allonge la fenêtre."
+        />
       )}
     </div>
   );

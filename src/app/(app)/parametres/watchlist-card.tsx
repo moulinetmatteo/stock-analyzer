@@ -4,7 +4,7 @@ import { useActionState, useTransition } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionTitle } from "@/components/stat-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CustomTicker } from "@/lib/data";
@@ -24,11 +24,11 @@ export function WatchlistCard({ items }: { items: CustomTicker[] }) {
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Watchlist personnalisée</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <section className="surface-card p-5">
+      <SectionTitle aside={items.length ? `${items.length} titre(s)` : undefined}>
+        Watchlist personnalisée
+      </SectionTitle>
+      <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
           Ajoute les titres absents de la liste par défaut. Ils apparaîtront dans le
           screener, l&apos;analyse et les alertes.
@@ -69,8 +69,8 @@ export function WatchlistCard({ items }: { items: CustomTicker[] }) {
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 

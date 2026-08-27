@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CartesianGrid, Line, LineChart, ReferenceLine, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
-import { X } from "lucide-react";
+import { GitCompare, X } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -14,6 +14,7 @@ import {
 import { RsiPill } from "@/components/signal-badge";
 import { SectionTitle } from "@/components/stat-card";
 import { fmtEur, fmtPct, fmtNum, pnlColor, cn } from "@/lib/utils";
+import { EmptyState } from "@/components/empty-state";
 
 export type CompareSeries = {
   ticker: string;
@@ -114,9 +115,11 @@ export function ComparisonView({
       </div>
 
       {series.length < 2 ? (
-        <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Sélectionne au moins deux actions pour lancer la comparaison.
-        </p>
+        <EmptyState
+          icon={GitCompare}
+          title="Deux titres minimum"
+          description="Ajoute au moins une action de plus pour comparer les performances."
+        />
       ) : (
         <>
           <section className="surface-card p-5">

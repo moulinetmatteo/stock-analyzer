@@ -6,8 +6,12 @@ name: Alertes et scan
 
 on:
   schedule:
-    # Seuils de prix et bascules de zone RSI : toutes les 30 min,
-    # 9h-18h Paris (7h-16h UTC), du lundi au vendredi.
+    # Seuils de prix : toutes les 5 min, 9h-18h Paris (7h-16h UTC), lun-ven.
+    # Ne consulte que les titres sous alerte, donc peu de requêtes.
+    - cron: "*/5 7-16 * * 1-5"
+    # Bascules de zone RSI : toutes les 30 min. Le balayage porte sur toute la
+    # watchlist ; à 5 min d'intervalle Yahoo finirait par limiter, et un RSI ne
+    # bouge pas assez en cinq minutes pour le justifier.
     - cron: "*/30 7-16 * * 1-5"
     # Scan des titres en survente : une fois, à 9h30 Paris.
     - cron: "30 7 * * 1-5"
@@ -16,7 +20,7 @@ on:
       job:
         description: "Tâche à lancer"
         type: choice
-        options: [alerts, scan]
+        options: [alerts, prix, rsi, scan]
         default: alerts
 
 jobs:
@@ -28,10 +32,12 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "job=${{ inputs.job }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "30 7 * * 1-5" ]; then
-            echo "job=scan" >> "$GITHUB_OUTPUT"
           else
-            echo "job=alerts" >> "$GITHUB_OUTPUT"
+            case "${{ github.event.schedule }}" in
+              "30 7 * * 1-5")     echo "job=scan" >> "$GITHUB_OUTPUT" ;;
+              "*/30 7-16 * * 1-5") echo "job=rsi"  >> "$GITHUB_OUTPUT" ;;
+              *)                   echo "job=prix" >> "$GITHUB_OUTPUT" ;;
+            esac
           fi
 
       - name: Appeler la route
@@ -48,6 +54,7 @@ jobs:
           cat /tmp/out.json; echo
           # 207 signale des erreurs par utilisateur sans faire échouer le lot.
           if [ "$code" != "200" ] && [ "$code" != "207" ]; then
-            echo "::error::La route a répondu $code"
+            detail=$(python3 -c "import json,sys; print(json.load(open('/tmp/out.json')).get('error',''))" 2>/dev/null || true)
+            echo "::error::HTTP $code — ${detail:-réponse illisible}"
             exit 1
           fi

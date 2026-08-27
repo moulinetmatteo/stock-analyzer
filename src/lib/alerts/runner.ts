@@ -54,7 +54,11 @@ export type RunOptions = { dryRun?: boolean };
 
 // ── Alertes prix et bascules de zone RSI ─────────────────────────────────────
 
-export async function runAlerts(opts: RunOptions = {}): Promise<RunSummary> {
+/**
+ * Seuils de prix uniquement. Ne consulte que les titres réellement sous alerte,
+ * donc quelques requêtes : c'est ce qui peut tourner à haute fréquence.
+ */
+export async function runPriceAlerts(opts: RunOptions = {}): Promise<RunSummary> {
   const dry = Boolean(opts.dryRun);
   const summary: RunSummary = {
     users: 0, priceAlerts: 0, rsiAlerts: 0, scans: 0, errors: [],
@@ -108,6 +112,41 @@ export async function runAlerts(opts: RunOptions = {}): Promise<RunSummary> {
         }
       }
 
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      summary.errors.push(`${uid}: ${msg}`);
+      console.error(`[cron] prix ${uid} :`, msg);
+    }
+  }
+
+  return summary;
+}
+
+/**
+ * Bascules de zone RSI sur toute la watchlist. Interroge une quarantaine de
+ * titres sur trois mois : à cadence élevée, Yahoo finit par limiter. Un RSI ne
+ * bouge pas assez en cinq minutes pour que ça vaille le coup.
+ */
+export async function runRsiAlerts(opts: RunOptions = {}): Promise<RunSummary> {
+  const dry = Boolean(opts.dryRun);
+  const summary: RunSummary = {
+    users: 0, priceAlerts: 0, rsiAlerts: 0, scans: 0, errors: [],
+    ...(dry ? { preview: [] as string[] } : {}),
+  };
+  const deliver = async (t: TelegramTarget, text: string) => {
+    if (dry) { summary.preview!.push(`\u2192 ${t.user_id}\n${text}`); return true; }
+    return sendTelegram(t, text);
+  };
+  const targets = await getAllTelegramTargets();
+  if (!targets.length) return summary;
+
+  const eurusd = await getEurUsd();
+  const day = parisDay();
+  summary.users = targets.length;
+
+  for (const target of targets) {
+    const uid = target.user_id;
+    try {
       // ── Bascules de zone RSI ──────────────────────────────────────────────
       const previous = await getRsiState(uid);
       const tickers = WATCHLIST.map((w) => w.ticker);
@@ -228,4 +267,18 @@ export async function runScan(opts: RunOptions = {}): Promise<RunSummary> {
   }
 
   return summary;
+}
+
+/** Les deux à la suite — utilisé par un lancement manuel. */
+export async function runAlerts(opts: RunOptions = {}): Promise<RunSummary> {
+  const a = await runPriceAlerts(opts);
+  const b = await runRsiAlerts(opts);
+  return {
+    users: Math.max(a.users, b.users),
+    priceAlerts: a.priceAlerts,
+    rsiAlerts: b.rsiAlerts,
+    scans: 0,
+    errors: [...a.errors, ...b.errors],
+    ...(opts.dryRun ? { preview: [...(a.preview ?? []), ...(b.preview ?? [])] } : {}),
+  };
 }

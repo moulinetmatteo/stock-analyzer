@@ -201,7 +201,15 @@ export type Fundamentals = {
   targetMean: number | null;
 };
 
+// Les fondamentaux changent au rythme des publications trimestrielles : les
+// garder six heures évite de réinterroger Yahoo à chaque visite.
+const fundMemo = new Map<string, { at: number; data: Fundamentals | null }>();
+const FUND_TTL_MS = 6 * 60 * 60 * 1000;
+
 export async function getFundamentals(ticker: string): Promise<Fundamentals | null> {
+  const hit = fundMemo.get(ticker);
+  if (hit && Date.now() - hit.at < FUND_TTL_MS) return hit.data;
+
   try {
     const [q, summary] = await Promise.all([
       yahooFinance.quote(ticker),
@@ -221,7 +229,7 @@ export async function getFundamentals(ticker: string): Promise<Fundamentals | nu
     const sd = summary?.summaryDetail;
     const n = (v: number | undefined | null) => (v === undefined ? null : v);
 
-    return {
+    const result: Fundamentals = {
       marketCap: q.marketCap ?? null,
       peRatio: q.trailingPE ?? n(sd?.trailingPE),
       dividendYield: q.dividendYield ?? null,
@@ -256,9 +264,36 @@ export async function getFundamentals(ticker: string): Promise<Fundamentals | nu
       analystCount: n(fd?.numberOfAnalystOpinions),
       targetMean: n(fd?.targetMeanPrice),
     };
+
+    fundMemo.set(ticker, { at: Date.now(), data: result });
+    return result;
   } catch {
+    fundMemo.set(ticker, { at: Date.now(), data: null });
     return null;
   }
+}
+
+/** Fondamentaux en lot, avec la même limite de concurrence que les cours. */
+export async function getFundamentalsBatch(
+  tickers: string[],
+  concurrency = 8,
+): Promise<Map<string, Fundamentals>> {
+  const out = new Map<string, Fundamentals>();
+  const queue = [...tickers];
+
+  async function worker() {
+    for (;;) {
+      const t = queue.shift();
+      if (!t) return;
+      const f = await getFundamentals(t);
+      // Un ETF n'a ni marge ni rentabilité des capitaux : il n'a rien à faire
+      // dans un tableau fondamental.
+      if (f && f.netMargin !== null) out.set(t, f);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, tickers.length) }, worker));
+  return out;
 }
 
 export type NewsItem = {

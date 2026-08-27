@@ -9,7 +9,7 @@ Supabase et les mêmes comptes utilisateurs.
 | Page | Contenu |
 |---|---|
 | **Dashboard** | Valorisation du portefeuille, top hausses/baisses, heatmap sectorielle, opportunités RSI, alertes déclenchées, calendrier des résultats |
-| **Screener** | Tous les titres suivis avec RSI, stochastique, croisement EMA et signal de consensus — triable et filtrable |
+| **Screener** | Deux vues : technique (RSI, stochastique, croisement EMA, signal de consensus) et fondamentale (marges, ROE, croissance, endettement, valorisation, consensus analystes) |
 | **Analyse détaillée** | Chandeliers + EMA 20/50/200, Bollinger, volume, RSI, MACD, fondamentaux, actualités, et une lecture des indicateurs par Claude |
 | **Comparaison** | Jusqu'à 5 titres en performance relative base 100 |
 | **Portefeuille** | Positions et PRU, historique, import CSV courtier, métriques de risque (volatilité, Sharpe, drawdown, alpha vs S&P 500), journal d'investissement |

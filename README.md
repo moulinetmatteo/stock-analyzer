@@ -11,6 +11,7 @@ Supabase et les mêmes comptes utilisateurs.
 | **Dashboard** | Valorisation du portefeuille, top hausses/baisses, heatmap sectorielle, opportunités RSI, alertes déclenchées, calendrier des résultats |
 | **Screener** | Deux vues : technique (RSI, stochastique, croisement EMA, signal de consensus) et fondamentale (marges, ROE, croissance, endettement, valorisation, consensus analystes) |
 | **Analyse détaillée** | Chandeliers + EMA 20/50/200, Bollinger, volume, RSI, MACD, fondamentaux, actualités, et une lecture des indicateurs par Claude |
+| **Candidats** | Titres surveillés avant achat : thèse écrite à l'avance, prix visé, conviction, et l'écart depuis la mise sous surveillance |
 | **Comparaison** | Jusqu'à 5 titres en performance relative base 100 |
 | **Portefeuille** | Positions et PRU, historique, import CSV courtier, métriques de risque (volatilité, Sharpe, drawdown, alpha vs S&P 500), journal d'investissement |
 | **Backtesting** | Stratégies RSI / MACD / combinée contre le buy-and-hold |
@@ -85,6 +86,18 @@ curl -H "x-cron-secret: $CRON_SECRET" \
 
 À configurer une fois : `sql/alert-dedup.sql` dans Supabase, `CRON_SECRET` dans
 Vercel, puis `APP_URL` et `CRON_SECRET` dans les secrets GitHub du dépôt.
+
+## Tables à créer
+
+Le dossier `sql/` contient les tables ajoutées après la reprise du schéma
+Streamlit. Chacune est facultative : sans elle la fonctionnalité concernée
+l'annonce clairement plutôt que d'échouer en silence.
+
+| Fichier | Ce qu'il apporte |
+|---|---|
+| `sql/ai-analyses.sql` | cache des analyses IA |
+| `sql/alert-dedup.sql` | une notification par alerte et par jour |
+| `sql/candidates.sql` | liste de candidats à l'achat |
 
 ## Analyse IA
 

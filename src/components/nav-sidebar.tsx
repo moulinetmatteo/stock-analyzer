@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Filter, LineChart, GitCompare,
-  Wallet, FlaskConical, Bell, Settings, LogOut, TrendingUp,
+  Wallet, FlaskConical, Bell, Settings, LogOut, TrendingUp, Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -19,6 +19,7 @@ const GROUPS: {
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/screener", label: "Screener", icon: Filter },
       { href: "/analyse", label: "Analyse", icon: LineChart },
+      { href: "/candidats", label: "Candidats", icon: Eye },
       { href: "/comparaison", label: "Comparaison", icon: GitCompare },
     ],
   },

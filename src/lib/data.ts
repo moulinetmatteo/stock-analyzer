@@ -321,3 +321,50 @@ export async function markAlertNotified(uid: string, ticker: string, day: string
     .eq("user_id", uid)
     .eq("ticker", ticker);
 }
+
+// ── Candidats à l'achat ───────────────────────────────────────────────────────
+
+export type CandidateStatus = "surveille" | "achete" | "abandonne";
+
+export type Candidate = {
+  id: string;
+  ticker: string;
+  nom: string;
+  these: string;
+  prix_cible: number | null;
+  /** Cours au moment de la mise sous surveillance : la référence pour juger après coup. */
+  prix_ajout: number | null;
+  conviction: number;
+  statut: CandidateStatus;
+  note_sortie: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function getCandidates(uid: string): Promise<Candidate[]> {
+  const { data } = await supabase
+    .from("candidates")
+    .select("*")
+    .eq("user_id", uid)
+    .order("created_at", { ascending: false });
+  return (data ?? []) as Candidate[];
+}
+
+/**
+ * Remonte l'erreur au lieu de l'avaler : sans la table, l'utilisateur verrait
+ * un message de succès alors que rien n'a été écrit.
+ */
+export async function upsertCandidate(
+  uid: string,
+  c: Omit<Candidate, "id" | "created_at" | "updated_at"> & { prix_ajout?: number | null },
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("candidates").upsert(
+    { user_id: uid, ...c, updated_at: new Date().toISOString() },
+    { onConflict: "user_id,ticker" },
+  );
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function deleteCandidate(uid: string, ticker: string) {
+  await supabase.from("candidates").delete().eq("user_id", uid).eq("ticker", ticker);
+}

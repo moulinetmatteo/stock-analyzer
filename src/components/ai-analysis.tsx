@@ -8,6 +8,15 @@ import type { PeriodKey } from "@/lib/market/constants";
 
 type Status = "idle" | "streaming" | "done" | "error";
 
+/** Âge d'une analyse conservée, en français courant. */
+function ageLabel(iso: string): string {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "à l'instant";
+  if (mins < 60) return `il y a ${mins} min`;
+  const h = Math.round(mins / 60);
+  return `il y a ${h} h`;
+}
+
 export function AiAnalysis({
   ticker,
   period,
@@ -19,27 +28,42 @@ export function AiAnalysis({
 }) {
   const [text, setText] = useState("");
   const [status, setStatus] = useState<Status>("idle");
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const [cachedPrice, setCachedPrice] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  async function run() {
+  async function run(force = false) {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
     setText("");
+    setCachedAt(null);
+    setCachedPrice(null);
     setStatus("streaming");
 
     try {
       const res = await fetch("/api/analyse-ia", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticker, periode: period }),
+        body: JSON.stringify({ ticker, periode: period, force }),
         signal: controller.signal,
       });
 
       if (!res.ok || !res.body) {
         setText(await res.text());
         setStatus("error");
+        return;
+      }
+
+      // Une analyse servie depuis le cache arrive d'un bloc : inutile de
+      // simuler une frappe, on l'affiche telle quelle.
+      if (res.headers.get("X-Cache") === "hit") {
+        setText(await res.text());
+        setCachedAt(res.headers.get("X-Generated-At"));
+        const p = res.headers.get("X-Generated-Price");
+        setCachedPrice(p ? Number(p) : null);
+        setStatus("done");
         return;
       }
 
@@ -66,7 +90,11 @@ export function AiAnalysis({
 
   return (
     <section className="surface-card p-5">
-      <SectionTitle aside={status === "done" ? "généré par Claude" : undefined}>
+      <SectionTitle
+        aside={
+          status !== "done" ? undefined : cachedAt ? "en cache" : "généré par Claude"
+        }
+      >
         <span className="inline-flex items-center gap-2">
           <Sparkles className="text-primary size-4" />
           Lecture des indicateurs
@@ -80,7 +108,7 @@ export function AiAnalysis({
             ce sur quoi ils s&apos;accordent, ce sur quoi ils divergent, et les niveaux
             qui comptent. Il n&apos;a accès qu&apos;aux chiffres de cette page.
           </p>
-          <Button size="sm" onClick={run}>
+          <Button size="sm" onClick={() => run()}>
             <Sparkles className="size-4" />
             Lancer l&apos;analyse
           </Button>
@@ -107,14 +135,20 @@ export function AiAnalysis({
                 Arrêter
               </Button>
             ) : (
-              <Button size="sm" variant="outline" onClick={run}>
+              <Button size="sm" variant="outline" onClick={() => run(true)}>
                 <RefreshCw className="size-3.5" />
-                Relancer
+                {cachedAt ? "Rafraîchir" : "Relancer"}
               </Button>
             )}
             {status === "done" && (
               <p className="text-muted-foreground text-xs">
-                Lecture d&apos;indicateurs, pas un conseil d&apos;investissement.
+                {cachedAt
+                  ? `Analyse conservée, générée ${ageLabel(cachedAt)}${
+                      cachedPrice !== null
+                        ? ` alors que le cours était à ${cachedPrice.toFixed(2)} €`
+                        : ""
+                    }.`
+                  : "Lecture d'indicateurs, pas un conseil d'investissement."}
               </p>
             )}
           </div>

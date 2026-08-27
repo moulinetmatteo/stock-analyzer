@@ -54,7 +54,7 @@ export async function buildContext(
   ticker: string,
   period: PeriodKey,
   position?: Position,
-): Promise<{ label: string; context: string } | null> {
+): Promise<{ label: string; context: string; priceEur: number } | null> {
   const [eurusd, full] = await Promise.all([getEurUsd(), getSeries(ticker, period)]);
   if (!full) return null;
 
@@ -156,7 +156,7 @@ export async function buildContext(
     );
   }
 
-  return { label, context: lines.join("\n") };
+  return { label, context: lines.join("\n"), priceEur: price };
 }
 
 /** Analyse en flux : le texte arrive au fil de l'eau plutôt qu'en bloc. */

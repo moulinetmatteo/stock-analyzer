@@ -215,3 +215,51 @@ export function applyToPosition(
   if (qty === 0) return null;
   return { ticker: tx.ticker, nom: pos.nom, quantite: qty, prix_achat: pos.prix_achat };
 }
+
+// ── Cache des analyses IA ─────────────────────────────────────────────────────
+
+export type CachedAnalysis = {
+  content: string;
+  price_eur: number | null;
+  created_at: string;
+};
+
+/**
+ * Une analyse coûte un appel facturé : on la conserve pour que recliquer sur le
+ * même titre ne repaie pas. La péremption est décidée par l'appelant, à partir
+ * de created_at — le cours bouge, une lecture du matin vaut moins le soir.
+ */
+export async function getCachedAnalysis(
+  uid: string,
+  ticker: string,
+  periode: string,
+): Promise<CachedAnalysis | null> {
+  const { data } = await supabase
+    .from("ai_analyses")
+    .select("content,price_eur,created_at")
+    .eq("user_id", uid)
+    .eq("ticker", ticker)
+    .eq("periode", periode)
+    .maybeSingle();
+  return data ?? null;
+}
+
+export async function saveAnalysis(
+  uid: string,
+  ticker: string,
+  periode: string,
+  content: string,
+  priceEur: number | null,
+) {
+  await supabase.from("ai_analyses").upsert(
+    {
+      user_id: uid,
+      ticker,
+      periode,
+      content,
+      price_eur: priceEur,
+      created_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,ticker,periode" },
+  );
+}

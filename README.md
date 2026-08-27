@@ -73,7 +73,20 @@ d'achat ou de vente et de donner un objectif de cours : il décrit ce que disent
 les indicateurs, notamment là où ils divergent.
 
 Chaque analyse est un appel facturé (`claude-opus-5`, de l'ordre de quelques
-centimes) — elle ne part que sur clic, jamais au chargement de la page.
+centimes) — elle ne part que sur clic, jamais au chargement de la page. Elle est
+ensuite conservée six heures par titre et par période : recliquer ressert la
+version existante, en indiquant son âge et le cours qui avait alors cours.
+« Rafraîchir » force une nouvelle analyse.
+
+Le cache vit dans une table Supabase à créer une fois :
+
+```sql
+-- contenu de sql/ai-analyses.sql, à coller dans Supabase → SQL Editor
+```
+
+Sans cette table, l'analyse fonctionne mais n'est jamais conservée — chaque clic
+repaie un appel. Une fois la table en place, `node scripts/test-ai-cache.mjs`
+vérifie le cache sans dépenser d'appel au modèle.
 
 ## Authentification
 
